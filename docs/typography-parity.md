@@ -8,6 +8,10 @@ document tracks both: does the attribute exist, and does it compose like InDesig
 detail lives in [cjk-typography.md](cjk-typography.md), [cjk.md](cjk.md) and
 [arabic-typography.md](arabic-typography.md). Overall numbers: [target-app-parity.md](target-app-parity.md).
 
+Text-wrap follow-up: when a long paragraph needs more line segments than the initial estimate,
+composition checks the breaker's full-column fallback against the actual segment and rebreaks it.
+The bounded initial estimate no longer lets later glyphs run across a wrap object or the frame edge.
+
 **Dimension score: ~45% ready (estimated), 120–200 h to parity.** Presence is high (76% scored below, nothing absent); fidelity
 against InDesign is **unmeasured**, which is the main gap.
 
