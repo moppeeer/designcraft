@@ -1155,3 +1155,28 @@ fn a_line_fits_when_its_baseline_does() {
     assert!(!overset(&mut s, 78.5), "the line is set; its descenders hang below the frame");
     assert!(overset(&mut s, 50.0), "a baseline below the frame still oversets the line");
 }
+
+
+/// Beside an object with text on both sides, every line stays within its segment, however many
+/// lines the paragraph needs (the breaker's segment estimate can run out on narrow segments; a
+/// line it set for the whole column ran across the object).
+#[test]
+fn every_line_beside_a_wrap_stays_within_its_segment() {
+    let mut s = Session::new();
+    s.execute("file.new", &json!({"facingPages": false})).unwrap();
+    // Placeholder text: paragraphs of a few sentences, some of them starting beside the object.
+    let t = s.execute("frame.create", &json!({"rect": [36, 36, 576, 756], "content": "text", "text": ""})).unwrap();
+    s.execute("type.fillWithPlaceholder", &json!({})).unwrap();
+    s.execute("selection.set", &json!({"ids": []})).unwrap();
+    s.execute("frame.create", &json!({"rect": [196, 160, 416, 490]})).unwrap();
+    s.execute("object.textWrap", &json!({"mode": "boundingBox", "offset": 6})).unwrap();
+    let d = &s.doc().unwrap().doc;
+    let c = s.cache.get(d, designcraft_doc::StoryId(t["story"].as_u64().unwrap()), None);
+    let mut beside = 0;
+    for l in c.frames.iter().flat_map(|f| &f.lines) {
+        let end = l.glyphs.iter().filter(|g| g.visible).map(|g| g.x + g.adv).fold(l.x0, f64::max);
+        assert!(end <= l.x1 + 0.5, "line at {} runs to {end}, past its segment {}..{}", l.baseline, l.x0, l.x1);
+        beside += usize::from(l.x1 < 400.0 || l.x0 > 400.0);
+    }
+    assert!(beside > 20, "lines on both sides of the object: {beside}");
+}

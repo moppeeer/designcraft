@@ -1268,7 +1268,9 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
                 // paragraph from here, starting with this line's segments as they are. A pass
                 // re-breaks at its first line only for a new line, whose segments it carries, so
                 // every re-break makes progress; their number is capped too.
-                if (k > 0 || !continues) && rebreaks < 256 && slots.get(k).is_some_and(|&(a, b)| ((b - a) - (x1 - x0)).abs() > 0.5) {
+                // Past the estimated slots the breaker set the line for the whole column.
+                let (sa, sb) = slots.get(k).copied().unwrap_or((col.x0, col.x1));
+                if (k > 0 || !continues) && rebreaks < 256 && ((sb - sa) - (x1 - x0)).abs() > 0.5 {
                     rebreaks += 1;
                     carry.insert(0, (x0, x1));
                     if !continues {
