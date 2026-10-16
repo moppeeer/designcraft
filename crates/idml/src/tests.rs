@@ -2627,6 +2627,13 @@ fn imports_and_round_trips_text_wrap_side_and_contour_type() {
     let back = import_idml(&export_idml(&d)).unwrap();
     let w = back.spreads[0].items.iter().find(|i| i.graphic().is_some()).unwrap().wrap.clone();
     assert_eq!((w.side, w.contour), (designcraft_doc::WrapSide::AwayFromSpine, designcraft_doc::ContourType::DetectEdges));
+    assert!(!w.inside_edges);
+    // An Alpha Channel contour with Include Inside Edges.
+    d.item_mut(id).unwrap().wrap.contour = designcraft_doc::ContourType::AlphaChannel;
+    d.item_mut(id).unwrap().wrap.inside_edges = true;
+    let back = import_idml(&export_idml(&d)).unwrap();
+    let w = back.spreads[0].items.iter().find(|i| i.graphic().is_some()).unwrap().wrap.clone();
+    assert_eq!((w.contour, w.inside_edges), (designcraft_doc::ContourType::AlphaChannel, true));
 }
 
 /// One single-column text frame at (0, 0)-(300, 200) on page 1, beside a 100 pt wide rectangle

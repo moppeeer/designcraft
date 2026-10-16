@@ -1156,7 +1156,6 @@ fn a_line_fits_when_its_baseline_does() {
     assert!(overset(&mut s, 50.0), "a baseline below the frame still oversets the line");
 }
 
-
 /// Beside an object with text on both sides, every line stays within its segment, however many
 /// lines the paragraph needs (the breaker's segment estimate can run out on narrow segments; a
 /// line it set for the whole column ran across the object).

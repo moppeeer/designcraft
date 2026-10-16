@@ -1852,7 +1852,11 @@ impl<'a> Ex<'a> {
                         .attr("Right", num(w.offsets[3]))])
                     .collect(),
             )
-            .child(El::new("ContourOption").attr("ContourType", names::contour_type_out(w.contour)).attr("IncludeInsideEdges", "false")),
+            .child(
+                El::new("ContourOption")
+                    .attr("ContourType", names::contour_type_out(w.contour))
+                    .attr("IncludeInsideEdges", if w.inside_edges { "true" } else { "false" }),
+            ),
         );
         match &it.content {
             Content::Group { items } => {

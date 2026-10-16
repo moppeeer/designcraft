@@ -2429,6 +2429,7 @@ impl<'r> Importer<'r> {
                 invert: w.get("Inverse") == Some("true"),
                 side: names::wrap_side_in(w.get("TextWrapSide").unwrap_or("BothSides")),
                 contour: names::contour_type_in(w.find("ContourOption").and_then(|c| c.get("ContourType")).unwrap_or("SameAsClipping")),
+                inside_edges: w.find("ContourOption").and_then(|c| c.get("IncludeInsideEdges")) == Some("true"),
                 ..TextWrap::default()
             };
             if let Some(o) = w.prop_el("TextWrapOffset") {
@@ -2739,6 +2740,7 @@ impl<'r> Importer<'r> {
             modified: 0,
             next_id: self.next_id,
             font_scope: 0,
+            alpha_outlines: Vec::new(),
         };
         Ok(d)
     }

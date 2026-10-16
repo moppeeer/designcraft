@@ -51,6 +51,8 @@ pub struct SelInfo {
     pub wrap_offsets: [f64; 4],
     pub wrap_side: String,
     pub wrap_contour: String,
+    /// Contour Options › Include Inside Edges (an Alpha Channel contour).
+    pub wrap_inside_edges: bool,
     pub locked: bool,
 }
 
@@ -161,6 +163,7 @@ pub fn sel_info(app: &DesignApp) -> Option<SelInfo> {
         wrap_offsets: first.wrap.offsets,
         wrap_side: serde_json::to_value(first.wrap.side).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default(),
         wrap_contour: serde_json::to_value(first.wrap.contour).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default(),
+        wrap_inside_edges: first.wrap.inside_edges,
         locked: first.locked,
     })
 }
