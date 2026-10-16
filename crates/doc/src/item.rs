@@ -480,6 +480,26 @@ pub enum WrapSide {
     LargestArea,
 }
 
+/// Text Wrap panel › Contour Options › Type: the outline a contour wrap follows on a graphic frame.
+/// Other frames always wrap around their own path.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ContourType {
+    /// The placed graphic's rectangle (within the frame).
+    BoundingBox,
+    /// Edges detected in the image. Composition follows the frame path.
+    DetectEdges,
+    /// The image's alpha channel. Composition follows the frame path.
+    AlphaChannel,
+    /// A path saved in the image. Composition follows the frame path.
+    PhotoshopPath,
+    /// The frame's path.
+    GraphicFrame,
+    /// The graphic's clipping path, which is the frame's path.
+    #[default]
+    SameAsClipping,
+}
+
 /// Text Wrap panel settings.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -489,6 +509,7 @@ pub struct TextWrap {
     pub offsets: [f64; 4],
     pub invert: bool,
     pub side: WrapSide,
+    pub contour: ContourType,
 }
 
 /// Frame fitting options (Object → Fitting → Frame Fitting Options).
