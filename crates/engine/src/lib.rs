@@ -348,6 +348,8 @@ pub struct Session {
     pub ui_requests: Vec<UiRequest>,
     /// Graphic loaded in the place cursor.
     pub loaded: Option<LoadedGraphic>,
+    /// A TOC awaiting a click/drag, bound to the document in which its options were chosen.
+    pub(crate) loaded_toc: Option<(u64, Value)>,
     pub(crate) untitled: u32,
     /// Transforms applied to the current selection, oldest first (Transform Again / Sequence
     /// Again), with the selection they were applied to and whether the last one came from a
@@ -406,6 +408,7 @@ impl Session {
             text_link_checks: Default::default(),
             ui_requests: vec![],
             loaded: None,
+            loaded_toc: None,
             transforms: Default::default(),
             text_drag: false,
             text_unit: None,
@@ -475,6 +478,9 @@ impl Session {
 
     pub fn set_active(&mut self, i: usize) {
         if i < self.docs.len() && self.active != Some(i) {
+            if self.loaded_toc.is_some() {
+                self.set_tool("selection");
+            }
             // The composition belongs to the document it shows in.
             if let Err(e) = self.end_composition() {
                 log::warn!("ending the IME composition: {e}");
@@ -485,6 +491,9 @@ impl Session {
         }
     }
     pub fn add_document(&mut self, d: DocState) -> usize {
+        if self.loaded_toc.is_some() {
+            self.set_tool("selection");
+        }
         if let Err(e) = self.end_composition() {
             log::warn!("ending the IME composition: {e}");
         }
@@ -503,6 +512,9 @@ impl Session {
         st.bump_revision();
     }
     pub fn close_document(&mut self, i: usize) {
+        if i < self.docs.len() && self.loaded_toc.is_some() {
+            self.set_tool("selection");
+        }
         if self.active == Some(i) {
             self.stop_data_preview();
         }

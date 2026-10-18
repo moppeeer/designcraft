@@ -510,6 +510,7 @@ pub fn create(id: &str) -> Box<dyn Tool> {
         "colorTheme" => Box::new(xform::ColorThemeTool),
         "hand" => Box::new(nav::HandTool::default()),
         "placeGun" => Box::new(nav::PlaceGun::default()),
+        "tocPlace" => Box::new(nav::PlaceGun::toc()),
         "zoom" => Box::new(nav::ZoomTool::default()),
         "page" => Box::new(nav::PageTool::default()),
         "typeOnPath" => Box::new(nav::PathTypeTool),

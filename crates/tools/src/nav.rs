@@ -112,11 +112,19 @@ impl Tool for ZoomTool {
 pub struct PlaceGun {
     start: Option<Point>,
     cur: Point,
+    toc: bool,
+}
+
+impl PlaceGun {
+    /// A text-placement cursor that emits the TOC placement command.
+    pub fn toc() -> Self {
+        Self { toc: true, ..Default::default() }
+    }
 }
 
 impl Tool for PlaceGun {
     fn id(&self) -> &'static str {
-        "placeGun"
+        if self.toc { "tocPlace" } else { "placeGun" }
     }
     fn pointer(&mut self, cx: &ToolContext, ev: &PointerEvent) -> Vec<Action> {
         match ev.kind {
@@ -133,7 +141,8 @@ impl Tool for PlaceGun {
                 let Some(a) = self.start.take() else { return vec![] };
                 let Some((sr, sa)) = cx.layout.spread_at(a) else { return vec![] };
                 let b = cx.layout.to_spread(sr, ev.pos);
-                if (ev.pos - a).hypot() < cx.tol(3.0)
+                if !self.toc
+                    && (ev.pos - a).hypot() < cx.tol(3.0)
                     && let Some((_, id)) = cx.hit(a)
                     && cx
                         .doc
@@ -144,7 +153,7 @@ impl Tool for PlaceGun {
                 }
                 let r = designcraft_geom::Rect::from_points(sa, b);
                 vec![Action::Exec(
-                    "place.drop".into(),
+                    if self.toc { "toc.place".into() } else { "place.drop".into() },
                     json!({"spread": crate::spread_json(sr), "x": sa.x, "y": sa.y, "rect": [r.x0, r.y0, r.x1, r.y1]}),
                 )]
             }
@@ -165,7 +174,7 @@ impl Tool for PlaceGun {
         }
     }
     fn cursor(&self, _cx: &ToolContext, _p: Point, _m: Mods) -> Cursor {
-        Cursor::LoadedGraphic
+        if self.toc { Cursor::LoadedText } else { Cursor::LoadedGraphic }
     }
 }
 

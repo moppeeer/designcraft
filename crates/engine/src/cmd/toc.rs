@@ -12,16 +12,21 @@ use serde_json::{Value, json};
 use super::{CommandSpec, bad, cmd, has_doc, str_param};
 use crate::{Result, Session};
 
+const GENERATE_PARAMS: &str = "{entries: [{style, level?: 1 (1-9), entryStyle?: paragraph style of its entries (default \"TOC Level n\"), pageNumber?: \"after\"|\"before\"|\"none\", separator?: text between entry and number (default a tab), pageNumberStyle?: character style of the page number, separatorStyle?: character style of the separator, sort?: bool (Sort Entries in Alphabetical Order: among their siblings, each with the entries under it)}] | styles: [names] (levels 1, 2, …), title?: \"Contents\", titleStyle?: paragraph style of the title (default \"TOC Title\"), pageNumbers?: true, replace?: true (regenerate the existing table of contents in place; false makes a new frame), page?: 1-based page for a new frame (its margins), rect?: [x0,y0,x1,y1] (spread coords)} → {story, entries}";
+
+/// Register immediate generation, interactive placement, and TOC refresh.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
+        cmd!("toc.generate", "Table of Contents…", ["Layout"], None, GENERATE_PARAMS, has_doc, generate),
+        cmd!(noundo "toc.load", "Load Table of Contents", [], None, GENERATE_PARAMS, has_doc, load),
         cmd!(
-            "toc.generate",
-            "Table of Contents…",
-            ["Layout"],
+            "toc.place",
+            "Place Table of Contents",
+            [],
             None,
-            "{entries: [{style, level?: 1 (1-9), entryStyle?: paragraph style of its entries (default \"TOC Level n\"), pageNumber?: \"after\"|\"before\"|\"none\", separator?: text between entry and number (default a tab), pageNumberStyle?: character style of the page number, separatorStyle?: character style of the separator, sort?: bool (Sort Entries in Alphabetical Order: among their siblings, each with the entries under it)}] | styles: [names] (levels 1, 2, …), title?: \"Contents\", titleStyle?: paragraph style of the title (default \"TOC Title\"), pageNumbers?: true, replace?: true (regenerate the existing table of contents in place; false makes a new frame), page?: 1-based page for a new frame (its margins), rect?: [x0,y0,x1,y1] (spread coords)} → {story, entries}",
+            "{spread?: 0, x?, y?, rect?: [x0,y0,x1,y1]} — place the loaded TOC in one undo step",
             has_doc,
-            generate
+            place
         ),
         cmd!("toc.update", "Update Table of Contents", ["Layout"], None, "{} — regenerate the existing table of contents", has_toc, |s, _| {
             s.edit(|d, _| {
@@ -45,6 +50,65 @@ fn has_toc(s: &Session) -> std::result::Result<(), String> {
         Ok(st) if st.doc.toc.as_ref().is_some_and(|t| st.doc.story(t.story).is_some()) => Ok(()),
         _ => Err("the document has no table of contents".into()),
     }
+}
+
+/// Validate options without editing the live document, then bind the loaded cursor to it.
+fn load(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut params = p.clone();
+    let fields = params.as_object_mut().ok_or_else(|| bad("toc.load", "expected an object"))?;
+    fields.insert("replace".into(), json!(false));
+    let st = s.doc()?;
+    if st.editing_parents {
+        return Err(bad("toc.load", "place the table of contents on a document page"));
+    }
+    // Validate on a copy-on-write document, without changing the live document or its history.
+    let uid = st.uid;
+    let mut trial = Session::new();
+    trial.add_document(crate::DocState::new((*st.doc).clone(), None));
+    generate(&mut trial, &params)?;
+    s.set_tool("tocPlace");
+    s.loaded_toc = Some((uid, params));
+    Ok(json!({"loaded": true}))
+}
+
+/// Generate the loaded TOC at the chosen page position as one undoable edit.
+fn place(s: &mut Session, p: &Value) -> Result<Value> {
+    let (uid, mut params) = s.loaded_toc.clone().ok_or_else(|| bad("toc.place", "no table of contents is loaded"))?;
+    if s.doc()?.uid != uid {
+        s.set_tool("selection");
+        return Err(bad("toc.place", "the loaded table of contents belongs to another document"));
+    }
+    let SpreadRef::Doc(si) = super::spread_param(p, "toc.place")? else {
+        return Err(bad("toc.place", "place the table of contents on a document page"));
+    };
+    if s.doc()?.editing_parents {
+        return Err(bad("toc.place", "place the table of contents on a document page"));
+    }
+    let d = &s.doc()?.doc;
+    let spread = d.spreads.get(si).ok_or_else(|| bad("toc.place", "no such spread"))?;
+    let x = super::f64_or(p, "x", 0.0);
+    let y = super::f64_or(p, "y", 0.0);
+    if !x.is_finite() || !y.is_finite() {
+        return Err(bad("toc.place", "placement must be finite"));
+    }
+    let pi = spread.page_at_x(x).ok_or_else(|| bad("toc.place", "no page at the placement point"))?;
+    let page = spread.pages.get(pi).ok_or_else(|| bad("toc.place", "no page at the placement point"))?;
+    let margin = page.margin_rect();
+    let supplied = super::rect_param(p, "rect");
+    if p.get("rect").is_some() && supplied.is_none()
+        || supplied.is_some_and(|r| ![r.x0, r.y0, r.x1, r.y1].iter().all(|v| v.is_finite()) || r.width() < 0.0 || r.height() < 0.0)
+    {
+        return Err(bad("toc.place", "rect must contain four finite coordinates in order"));
+    }
+    let rect = match supplied {
+        Some(r) if r.width() > 2.0 && r.height() > 2.0 => r,
+        _ => Rect::new(x, y, margin.x1.max(x + 12.0), margin.y1.max(y + 12.0)),
+    };
+    params["page"] = json!(d.first_page_of_spread(si) + pi + 1);
+    params["rect"] = json!([rect.x0, rect.y0, rect.x1, rect.y1]);
+    let result = generate(s, &params)?;
+    s.set_tool("selection");
+    Ok(result)
 }
 
 const MAX_ENTRIES: usize = 64;
@@ -621,6 +685,55 @@ mod tests {
         assert_eq!((e.page_number_style.as_deref(), e.separator_style), (Some("Folio"), None));
         s.execute("toc.update", &json!({})).unwrap();
         assert!(toc_runs(&s).iter().any(|(t, st)| t == "1" && st == "Folio"), "{:?}", toc_runs(&s));
+    }
+
+    /// Loading is cancellable; dragging commits once, and a load never crosses documents.
+    #[test]
+    fn loaded_toc_places_once_and_escape_leaves_no_document_change() {
+        use designcraft_tools::{Mods, PointerEvent, PointerKind, ToolKey};
+        let (mut s, page) = doc_with(&[("Chapter", "Head")]);
+        let options = json!({"styles": ["Head"], "page": page});
+        let before = s.doc().unwrap().doc.clone();
+        let undo = s.doc().unwrap().history.undo.len();
+        s.execute("toc.load", &options).unwrap();
+        assert_eq!(s.tool_id(), "tocPlace");
+        assert_eq!(s.doc().unwrap().history.undo.len(), undo);
+        assert!(s.doc().unwrap().doc.toc.is_none());
+        let view = crate::ViewInfo::default();
+        s.tool_key(ToolKey::Escape, Mods::default(), view).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&s.doc().unwrap().doc, &before));
+        assert!(s.execute("toc.place", &json!({})).is_err());
+        s.execute("toc.load", &options).unwrap();
+        let (si, pi) = s.doc().unwrap().doc.page_loc(page - 1).unwrap();
+        let margin = s.doc().unwrap().doc.spreads[si].pages[pi].margin_rect();
+        let layout = s.layout();
+        let a = layout.to_canvas(SpreadRef::Doc(si), designcraft_geom::Point::new(margin.x0, margin.y0));
+        let b = a + designcraft_geom::Vec2::new(220.0, 260.0);
+        for (kind, pos) in [(PointerKind::Down, a), (PointerKind::Drag, b), (PointerKind::Up, b)] {
+            s.pointer(&PointerEvent { kind, pos, mods: Mods::default(), clicks: 1 }, view).unwrap();
+        }
+        assert_eq!(s.tool_id(), "selection");
+        let d = &s.doc().unwrap().doc;
+        let toc = d.toc.as_ref().unwrap();
+        let frame = d.item(d.story(toc.story).unwrap().frames[0]).unwrap();
+        assert!((frame.bounds().width() - 220.0).abs() < 0.01);
+        assert_eq!(s.doc().unwrap().history.undo.len(), undo + 1);
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert!(s.doc().unwrap().doc.toc.is_none());
+        s.execute("toc.load", &options).unwrap();
+        assert!(s.execute("toc.place", &json!({"rect": [0, 0, -1, 20]})).is_err());
+        assert!(s.doc().unwrap().doc.toc.is_none());
+        assert_eq!(s.tool_id(), "tocPlace", "a rejected placement keeps the load");
+        s.execute("layout.parents.edit", &json!({"on": true})).unwrap();
+        assert!(s.execute("toc.place", &json!({"x": 36, "y": 36})).is_err());
+        assert!(s.doc().unwrap().doc.toc.is_none());
+        s.execute("layout.parents.edit", &json!({"on": false})).unwrap();
+        s.execute("toc.place", &json!({"x": 36, "y": 36})).unwrap();
+        assert!(s.doc().unwrap().doc.toc.is_some());
+        s.execute("toc.load", &options).unwrap();
+        s.execute("file.new", &json!({})).unwrap();
+        assert!(s.execute("toc.place", &json!({})).is_err(), "a load cannot leak into another document");
+        assert!(s.doc().unwrap().doc.toc.is_none());
     }
 
     #[test]

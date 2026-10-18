@@ -73,6 +73,9 @@ impl Session {
         if id != "placeGun" {
             self.loaded = None;
         }
+        if id != "tocPlace" {
+            self.loaded_toc = None;
+        }
         // Leaving the Type tool keeps the text frame selected.
         if id != "type"
             && let Some(st) = self.active_mut()
@@ -126,7 +129,7 @@ impl Session {
     /// Hand, Zoom and a loaded place cursor, where Cmd means something else or nothing.
     fn borrowed_selection_tool(&self) -> Option<&'static str> {
         match self.tool.id() {
-            "selection" | "directSelection" | "hand" | "zoom" | "placeGun" => None,
+            "selection" | "directSelection" | "hand" | "zoom" | "placeGun" | "tocPlace" => None,
             _ => Some(self.last_selection_tool),
         }
     }
