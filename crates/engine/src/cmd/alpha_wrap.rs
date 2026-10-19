@@ -219,7 +219,7 @@ mod tests {
         let d = &s.doc().unwrap().doc;
         assert_eq!(d.alpha_outlines.len(), 1);
         // Saved and opened again: traced again on open.
-        let bytes = crate::cmd::file::to_bytes(d);
+        let bytes = crate::cmd::file::to_bytes(d).unwrap();
         let back = crate::cmd::file::from_bytes(&bytes).unwrap();
         assert!(back.alpha_outlines.is_empty(), "not saved");
         let st = crate::DocState::new(back, None);
