@@ -86,13 +86,20 @@ fn place(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let d = &s.doc()?.doc;
     let spread = d.spreads.get(si).ok_or_else(|| bad("toc.place", "no such spread"))?;
-    let x = super::f64_or(p, "x", 0.0);
-    let y = super::f64_or(p, "y", 0.0);
+    let coordinate = |key| match p.get(key) {
+        None => Ok(0.0),
+        Some(value) => value.as_f64().ok_or_else(|| bad("toc.place", format!("{key} must be a number"))),
+    };
+    let x = coordinate("x")?;
+    let y = coordinate("y")?;
     if !x.is_finite() || !y.is_finite() {
         return Err(bad("toc.place", "placement must be finite"));
     }
     let pi = spread.page_at_x(x).ok_or_else(|| bad("toc.place", "no page at the placement point"))?;
     let page = spread.pages.get(pi).ok_or_else(|| bad("toc.place", "no page at the placement point"))?;
+    if !page.bounds().contains(designcraft_geom::Point::new(x, y)) {
+        return Err(bad("toc.place", "the placement point must be on the page"));
+    }
     let margin = page.margin_rect();
     let supplied = super::rect_param(p, "rect");
     if p.get("rect").is_some() && supplied.is_none()
@@ -721,6 +728,22 @@ mod tests {
         s.execute("edit.undo", &json!({})).unwrap();
         assert!(s.doc().unwrap().doc.toc.is_none());
         s.execute("toc.load", &options).unwrap();
+        let loaded_doc = s.doc().unwrap().doc.clone();
+        let loaded_undo = s.doc().unwrap().history.undo.len();
+        for params in [
+            json!({"x": 36, "y": "oops"}),
+            json!({"x": null}),
+            json!({"x": true}),
+            json!({"x": -1, "y": 36}),
+            json!({"x": 36, "y": -1}),
+            json!({"x": 36, "y": 100000}),
+            json!({"x": 100000, "y": 36}),
+        ] {
+            assert!(s.execute("toc.place", &params).is_err(), "{params}");
+            assert!(std::sync::Arc::ptr_eq(&s.doc().unwrap().doc, &loaded_doc));
+            assert_eq!(s.doc().unwrap().history.undo.len(), loaded_undo);
+            assert_eq!(s.tool_id(), "tocPlace");
+        }
         assert!(s.execute("toc.place", &json!({"rect": [0, 0, -1, 20]})).is_err());
         assert!(s.doc().unwrap().doc.toc.is_none());
         assert_eq!(s.tool_id(), "tocPlace", "a rejected placement keeps the load");

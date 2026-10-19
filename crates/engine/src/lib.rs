@@ -388,6 +388,7 @@ impl Session {
         format!("Untitled-{}", self.untitled.saturating_add(1))
     }
 
+    /// Start an empty editing session with no pending placement.
     pub fn new() -> Self {
         guard::install_panic_hook();
         Session {
@@ -476,6 +477,7 @@ impl Session {
         }
     }
 
+    /// Switch documents, cancelling a TOC cursor bound to the previous document.
     pub fn set_active(&mut self, i: usize) {
         if i < self.docs.len() && self.active != Some(i) {
             if self.loaded_toc.is_some() {
@@ -490,6 +492,7 @@ impl Session {
             self.active = Some(i);
         }
     }
+    /// Open and activate a document, discarding any pending TOC placement.
     pub fn add_document(&mut self, d: DocState) -> usize {
         if self.loaded_toc.is_some() {
             self.set_tool("selection");
@@ -511,6 +514,7 @@ impl Session {
         st.doc = stash;
         st.bump_revision();
     }
+    /// Close a document and cancel transient TOC placement state.
     pub fn close_document(&mut self, i: usize) {
         if i < self.docs.len() && self.loaded_toc.is_some() {
             self.set_tool("selection");

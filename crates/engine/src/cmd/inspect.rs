@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use super::{CommandSpec, always, cmd, has_doc};
 use crate::{Result, Session};
 
+/// Register inspection and tool-selection commands.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         cmd!(query "document.inspect", "Inspect Document", [], None, "{} → pages, spreads, items, stories (with overset), styles, swatches, selection", has_doc, inspect),

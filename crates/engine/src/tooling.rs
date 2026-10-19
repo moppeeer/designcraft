@@ -56,6 +56,7 @@ impl Session {
         self.tool.id()
     }
 
+    /// Change tools, clearing loaded content that belongs to the previous placement tool.
     pub fn set_tool(&mut self, id: &str) {
         if self.tool.id() == id {
             return;

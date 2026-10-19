@@ -123,9 +123,11 @@ impl PlaceGun {
 }
 
 impl Tool for PlaceGun {
+    /// Identify the graphic or TOC placement tool.
     fn id(&self) -> &'static str {
         if self.toc { "tocPlace" } else { "placeGun" }
     }
+    /// Translate click or drag gestures into the corresponding placement command.
     fn pointer(&mut self, cx: &ToolContext, ev: &PointerEvent) -> Vec<Action> {
         match ev.kind {
             PointerKind::Down => {
@@ -160,12 +162,14 @@ impl Tool for PlaceGun {
             _ => vec![],
         }
     }
+    /// Preview the frame rectangle while the user drags.
     fn overlays(&self, _cx: &ToolContext) -> Vec<crate::Overlay> {
         match self.start {
             Some(a) => vec![crate::Overlay::Marquee(designcraft_geom::Rect::from_points(a, self.cur))],
             None => vec![],
         }
     }
+    /// Cancel the loaded placement when Escape is pressed.
     fn key(&mut self, _cx: &ToolContext, key: crate::ToolKey, _mods: Mods) -> Vec<Action> {
         match key {
             // Escape unloads the place cursor.
@@ -173,6 +177,7 @@ impl Tool for PlaceGun {
             _ => vec![],
         }
     }
+    /// Show the badge appropriate to the loaded content.
     fn cursor(&self, _cx: &ToolContext, _p: Point, _m: Mods) -> Cursor {
         if self.toc { Cursor::LoadedText } else { Cursor::LoadedGraphic }
     }
@@ -443,8 +448,8 @@ impl Tool for PageTool {
                 p: d.cur,
                 text: format!(
                     "W: {}\nH: {}",
-                    designcraft_geom::format_measure(pg.width, cx.unit),
-                    designcraft_geom::format_measure(pg.height, cx.unit)
+                    designcraft_geom::format_measure(pg.width, cx.doc.settings.horizontal_units),
+                    designcraft_geom::format_measure(pg.height, cx.doc.settings.vertical_units)
                 ),
             });
         }
