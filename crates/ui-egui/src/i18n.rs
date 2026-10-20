@@ -89,6 +89,9 @@ const TABLE: &[(&str, [&str; 5])] = &[
     ("Cut", ["Ausschneiden", "Couper", "Cortar", "カット", "剪切"]),
     ("Copy", ["Kopieren", "Copier", "Copiar", "コピー", "复制"]),
     ("Paste", ["Einfügen", "Coller", "Pegar", "ペースト", "粘贴"]),
+    ("Mixed Objects", ["Mixed Objects", "Objets mixtes", "Mixed Objects", "Mixed Objects", "混合对象"]),
+    ("Text Frames", ["Text Frames", "Blocs de texte", "Text Frames", "Text Frames", "文本框架"]),
+    ("Linked Files", ["Linked Files", "Fichiers liés", "Linked Files", "Linked Files", "链接的文件"]),
     ("Hide Rulers", ["Lineale ausblenden", "Masquer les règles", "Ocultar reglas", "定規を隠す", "隐藏标尺"]),
     ("Inches Decimal", ["Zoll dezimal", "Pouces décimaux", "Pulgadas decimales", "インチ（10 進）", "十进制英寸"]),
     (

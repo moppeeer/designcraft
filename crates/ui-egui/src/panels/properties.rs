@@ -61,7 +61,19 @@ fn selection_title(app: &DesignApp, info: &Option<SelInfo>) -> String {
     }
     match info {
         None => crate::i18n::tr(&app.ui.language, "No Selection").into(),
-        Some(i) if i.count > 1 => crate::i18n::tr(&app.ui.language, "Multiple Objects").into(),
+        // Several objects, named as InDesign names them: "Text Frames" or "Linked Files" when all
+        // are of that kind, "Mixed Objects" when the kinds differ.
+        Some(i) if i.count > 1 => {
+            let mut kinds = st.selection.items.iter().map(|id| st.doc.item(*id).map(|it| it.default_label()));
+            let first = kinds.next().flatten();
+            let title = match first {
+                _ if !kinds.all(|k| k == first) => "Mixed Objects",
+                Some("<text frame>") => "Text Frames",
+                Some("<image>") => "Linked Files",
+                _ => "Multiple Objects",
+            };
+            crate::i18n::tr(&app.ui.language, title).into()
+        }
         Some(i) => match i.kind {
             "<text frame>" => crate::i18n::tr(&app.ui.language, "Text Frame").into(),
             "<group>" => crate::i18n::tr_context(&app.ui.language, "Group", "selection").into(),
@@ -3417,6 +3429,35 @@ mod tests {
         let doc = &h.state().session.active().unwrap().doc;
         assert_eq!(doc.story(story).unwrap().char_format_at(0).over.fill.as_deref(), Some(CYAN), "the text is cyan");
         assert_eq!(doc.item(designcraft_doc::ids::ItemId(id)).unwrap().fill.swatch, "[None]", "the frame isn't");
+    }
+
+    #[test]
+    fn several_objects_are_named_as_indesign_names_them() {
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({})).unwrap();
+        let text = |app: &mut DesignApp, x: u64| {
+            app.run("frame.create", json!({"rect": [x, 72, x + 100, 140], "content": "text", "text": "75%"})).unwrap()["id"].as_u64().unwrap()
+        };
+        let (a, b) = (text(&mut app, 72), text(&mut app, 200));
+        let rect = app.run("frame.create", json!({"rect": [72, 200, 172, 300]})).unwrap()["id"].as_u64().unwrap();
+        let title = |app: &mut DesignApp, ids: Vec<u64>| {
+            app.run("selection.set", json!({ "ids": ids })).unwrap();
+            selection_title(app, &super::super::sel_info(app))
+        };
+        assert_eq!(title(&mut app, vec![a, b]), "Text Frames");
+        // A number, its text and the square under it: the tutorial's column.
+        assert_eq!(title(&mut app, vec![a, b, rect]), "Mixed Objects");
+        assert_eq!(title(&mut app, vec![a]), "Text Frame");
+        // Placed images, as the tutorial's three pictures.
+        let png = designcraft_render::Rendered { width: 40, height: 40, pixels: vec![200u8; 40 * 40 * 4] }.to_png();
+        let b64 = designcraft_engine::cmd::base64_encode(&png);
+        let mut pics = vec![];
+        for x in [300, 420] {
+            let f = app.run("frame.create", json!({"rect": [x, 200, x + 100, 300], "content": "graphic"})).unwrap()["id"].as_u64().unwrap();
+            app.run("file.place", json!({"base64": b64, "name": "a.png", "frame": f})).unwrap();
+            pics.push(f);
+        }
+        assert_eq!(title(&mut app, pics), "Linked Files");
     }
 
     #[test]
