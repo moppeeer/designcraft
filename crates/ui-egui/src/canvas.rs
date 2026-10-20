@@ -152,6 +152,12 @@ pub fn current_slot(app: &DesignApp, layout: &CanvasLayout) -> Option<usize> {
     let v = app.view()?;
     let r = app.canvas_rect?;
     let c = Point::new(v.origin.x + r.width() as f64 / 2.0 / v.zoom, v.origin.y + r.height() as f64 / 2.0 / v.zoom);
+    nearest_slot(layout, c)
+}
+
+/// Index of the slot whose centre is vertically nearest canvas point `c`: the rule
+/// [`current_slot`] applies to the view centre, which Presentation fits and steps by.
+fn nearest_slot(layout: &CanvasLayout, c: Point) -> Option<usize> {
     layout
         .slots
         .iter()
@@ -496,7 +502,9 @@ fn presentation_view(app: &mut DesignApp, ctx: &egui::Context, rect: Rect, prese
         ctx.data_mut(|data| data.remove_temp::<Point>(key.with("last-centre"))).unwrap_or_else(|| centre(view, old_rect))
     };
     let layout = CanvasLayout::new(&st.doc, st.editing_parents);
-    let spread = layout.spread_at(current).map(|(spread, _)| spread);
+    // The slot Presentation fits and steps by (`current_slot`'s rule), not `spread_at`'s: with
+    // spreads of different heights the two can differ for the same point.
+    let spread = nearest_slot(&layout, current).and_then(|i| layout.slots.get(i)).map(|s| s.spread);
     let (mut restored, centre) = if presenting {
         if saved.is_none() {
             ctx.data_mut(|data| data.insert_temp(key, PresentationReturnView { view, rect: old_rect, spread }));
@@ -3115,6 +3123,46 @@ mod tests {
             }
             assert_eq!(h.state().app.view().unwrap().zoom, original.zoom);
         }
+    }
+
+    #[test]
+    fn presentation_restores_the_view_when_spreads_of_different_heights_meet_at_the_centre() {
+        // A tall spread followed by a short one: near the tall one's bottom edge the view centre
+        // lies on the tall spread, but the short one's centre is nearer, so Presentation shows
+        // the short one. Leaving without navigating must still restore the exact editing view.
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), Default::default());
+        app.run("file.new", json!({"pages":2,"facingPages":false})).unwrap();
+        app.run("layout.pageSize", json!({"pages":[1],"height":3000})).unwrap();
+        app.run("layout.pageSize", json!({"pages":[2],"height":100})).unwrap();
+        let mut h = crate::test_window::open(app, vec2(1440.0, 900.0));
+        h.state_mut().app.run("view.zoom", json!({"zoom":0.5})).unwrap();
+        h.run_steps(3);
+        let (rect, zoom) = (h.state().app.canvas_rect.unwrap(), h.state().app.view().unwrap().zoom);
+        let tall = CanvasLayout::new(&h.state().app.session.active().unwrap().doc, false).slots[0].bounds;
+        let target = Point::new(tall.center().x, tall.y1 - 100.0);
+        h.state_mut().app.view_mut().unwrap().origin =
+            Point::new(target.x - f64::from(rect.width()) / (2.0 * zoom), target.y - f64::from(rect.height()) / (2.0 * zoom));
+        h.run_steps(3);
+        let original = *h.state().app.view().unwrap();
+        {
+            let app = &h.state().app;
+            let layout = CanvasLayout::new(&app.session.active().unwrap().doc, false);
+            let centre = Xf::new(app.canvas_rect.unwrap(), app.view().unwrap()).to_canvas(app.canvas_rect.unwrap().center());
+            assert_eq!(layout.spread_at(centre).map(|(s, _)| s), Some(SpreadRef::Doc(0)), "the centre lies on the tall spread");
+            assert_eq!(current_slot(app, &layout), Some(1), "but the short spread is the one presented");
+        }
+        h.state_mut().app.run("view.screenMode", json!({"mode":"presentation"})).unwrap();
+        h.run_steps(3);
+        h.state_mut().app.run("view.screenMode", json!({"mode":"normal"})).unwrap();
+        h.run_steps(3);
+        let restored = *h.state().app.view().unwrap();
+        assert_eq!(restored.zoom, original.zoom);
+        assert!(
+            (restored.origin - original.origin).length() < 1e-8,
+            "without navigation, return to the same view: {:?} → {:?}",
+            original.origin,
+            restored.origin
+        );
     }
 
     #[test]
