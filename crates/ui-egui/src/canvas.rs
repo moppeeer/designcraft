@@ -1149,12 +1149,25 @@ fn draw_item_edges(painter: &egui::Painter, xf: &Xf, doc: &Document, it: &Item, 
     }
     // Empty graphic frame: the X.
     if it.object_style == designcraft_doc::BASIC_GRAPHICS_FRAME && matches!(it.content, Content::Unassigned) {
-        let r = it.inner_bounds();
         let m = a * it.xf;
-        let p = |x: f64, y: f64| xf.to_screen(m * Point::new(x, y));
-        painter.line_segment([p(r.x0, r.y0), p(r.x1, r.y1)], Stroke::new(hair(painter), col.gamma_multiply(0.75)));
-        painter.line_segment([p(r.x1, r.y0), p(r.x0, r.y1)], Stroke::new(hair(painter), col.gamma_multiply(0.75)));
+        for (p0, p1) in frame_x(it) {
+            painter.line_segment([xf.to_screen(m * p0), xf.to_screen(m * p1)], Stroke::new(hair(painter), col.gamma_multiply(0.75)));
+        }
     }
+}
+
+/// The X of an empty graphic frame, in its own space: a four-cornered frame joins its opposite
+/// corners, so a frame slanted with Direct Selection keeps its X corner to corner, as InDesign
+/// draws it; other shapes span their bounds.
+fn frame_x(it: &Item) -> [(Point, Point); 2] {
+    if let [sp] = it.path.subpaths.as_slice()
+        && sp.closed
+        && let [c0, c1, c2, c3] = sp.anchors.as_slice()
+    {
+        return [(c0.p, c2.p), (c1.p, c3.p)];
+    }
+    let r = it.inner_bounds();
+    [(Point::new(r.x0, r.y0), Point::new(r.x1, r.y1)), (Point::new(r.x1, r.y0), Point::new(r.x0, r.y1))]
 }
 
 /// Layer colour of the first selected item: live-corner marks are outlined in it.
@@ -3079,6 +3092,37 @@ mod tests {
             assert_eq!(strokes(&mut app, s.margin_color), 0, "{mode:?} hides the margin guide");
             assert_eq!(strokes(&mut app, s.slug_color), 0, "{mode:?} hides the slug guide");
         }
+    }
+
+    /// An empty graphic frame's X joins its corners: a rectangle's, and a frame slanted by
+    /// moving its top points, as in the Zero2Graphic tutorial's row of parallelograms.
+    #[test]
+    fn an_empty_frames_x_follows_its_corners() {
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({})).unwrap();
+        let id = app.run("frame.create", json!({"rect": [100, 100, 200, 160]})).unwrap()["id"].as_u64().unwrap();
+        let x = |app: &DesignApp| {
+            let it = app.session.active().unwrap().doc.item(designcraft_doc::ItemId(id)).unwrap().clone();
+            let m = it.xf;
+            frame_x(&it).map(|(a, b)| {
+                let (a, b) = (m * a, m * b);
+                [(a.x.round(), a.y.round()), (b.x.round(), b.y.round())]
+            })
+        };
+        let mut lines = x(&app).to_vec();
+        lines.iter_mut().for_each(|l| l.sort_by(|a, b| a.partial_cmp(b).unwrap()));
+        lines.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(lines, vec![[(100.0, 100.0), (200.0, 160.0)], [(100.0, 160.0), (200.0, 100.0)]], "corner to corner");
+        // Slant it: the two top points move 30 pt right.
+        let it = app.session.active().unwrap().doc.item(designcraft_doc::ItemId(id)).unwrap().clone();
+        let top: Vec<Value> =
+            it.path.subpaths[0].anchors.iter().enumerate().filter(|(_, a)| (it.xf * a.p).y < 130.0).map(|(k, _)| json!([0, k])).collect();
+        assert_eq!(top.len(), 2);
+        app.run("path.moveAnchors", json!({"id": id, "anchors": top, "dx": 30, "dy": 0})).unwrap();
+        let mut lines = x(&app).to_vec();
+        lines.iter_mut().for_each(|l| l.sort_by(|a, b| a.partial_cmp(b).unwrap()));
+        lines.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(lines, vec![[(100.0, 160.0), (230.0, 100.0)], [(130.0, 100.0), (200.0, 160.0)]], "the slanted corners");
     }
 
     /// Each preview mode's shown area: Preview stops at the trim, Bleed reaches the bleed box and
