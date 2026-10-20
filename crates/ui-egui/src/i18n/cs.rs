@@ -34,6 +34,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Mixed Objects", "Smíšené objekty"),
     ("Text Frames", "Textové rámečky"),
     ("Linked Files", "Propojené soubory"),
+    ("Linked File", "Propojený soubor"),
     ("Reverse Path", "Obrátit cestu"),
     ("Set Anchor", "Nastavit kotvu"),
     ("Clear", "Vymazat"),

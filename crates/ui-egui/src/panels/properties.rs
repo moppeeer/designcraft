@@ -77,7 +77,12 @@ fn selection_title(app: &DesignApp, info: &Option<SelInfo>) -> String {
         Some(i) => match i.kind {
             "<text frame>" => crate::i18n::tr(&app.ui.language, "Text Frame").into(),
             "<group>" => crate::i18n::tr_context(&app.ui.language, "Group", "selection").into(),
-            "<image>" => crate::i18n::tr(&app.ui.language, "Image").into(),
+            // A picture placed from a file is a "Linked File"; an embedded one is an image.
+            "<image>" => {
+                let linked = st.selection.items.first().and_then(|id| st.doc.item(*id)).and_then(|it| it.graphic());
+                let linked = linked.and_then(|g| st.doc.assets.get(&g.asset)).is_some_and(|a| a.link.is_some());
+                crate::i18n::tr(&app.ui.language, if linked { "Linked File" } else { "Image" }).into()
+            }
             "<rectangle>" => crate::i18n::tr(&app.ui.language, "Rectangle").into(),
             "<ellipse>" => crate::i18n::tr(&app.ui.language, "Ellipse").into(),
             "<polygon>" => crate::i18n::tr(&app.ui.language, "Polygon").into(),
@@ -3457,7 +3462,15 @@ mod tests {
             app.run("file.place", json!({"base64": b64, "name": "a.png", "frame": f})).unwrap();
             pics.push(f);
         }
-        assert_eq!(title(&mut app, pics), "Linked Files");
+        assert_eq!(title(&mut app, pics.clone()), "Linked Files");
+        // One embedded picture is an image; one placed from a file, as in the tutorial, a linked file.
+        assert_eq!(title(&mut app, vec![pics[0]]), "Image");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("snowflake.png");
+        std::fs::write(&path, &png).unwrap();
+        let f = app.run("frame.create", json!({"rect": [300, 320, 400, 420], "content": "graphic"})).unwrap()["id"].as_u64().unwrap();
+        app.run("file.place", json!({"path": path.to_string_lossy(), "frame": f})).unwrap();
+        assert_eq!(title(&mut app, vec![f]), "Linked File");
     }
 
     #[test]

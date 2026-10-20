@@ -34,6 +34,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Mixed Objects", "შერეული ობიექტები"),
     ("Text Frames", "ტექსტის ჩარჩოები"),
     ("Linked Files", "დაკავშირებული ფაილები"),
+    ("Linked File", "დაკავშირებული ფაილი"),
     ("Inches Decimal", "ინჩები (ათობითი)"),
     ("Back", "უკან"),
     ("Warning", "გაფრთხილება"),

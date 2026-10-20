@@ -33,6 +33,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Mixed Objects", "混在オブジェクト"),
     ("Text Frames", "テキストフレーム"),
     ("Linked Files", "リンクファイル"),
+    ("Linked File", "リンクファイル"),
     ("Paste Vector Art", "ベクトルアートをペースト"),
     ("Baseline Options", "ベースラインオプション"),
     ("Column Rules", "段落境界線"),

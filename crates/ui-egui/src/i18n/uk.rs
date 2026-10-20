@@ -32,6 +32,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Mixed Objects", "Змішані об’єкти"),
     ("Text Frames", "Текстові фрейми"),
     ("Linked Files", "Пов’язані файли"),
+    ("Linked File", "Пов’язаний файл"),
     ("Paste Vector Art", "Вставити векторну графіку"),
     ("Baseline Options", "Параметри базової лінії"),
     ("Fixed Number", "Фіксована кількість"),
