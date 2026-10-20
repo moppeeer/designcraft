@@ -104,6 +104,105 @@ fn customized_icon_rail_toggles_a_flyout_next_to_the_actual_dock() {
     assert_eq!(h.state().app.ui.docking, before);
 }
 
+/// The icon of a panel in the customized dock's icon rail.
+fn rail_icon(h: &Harness<'static, crate::test_window::Window>, panel: &str) -> Pos2 {
+    let rail = crate::test_window::panel_rect(h, "shared-panel-icons");
+    h.query_all_by_label(crate::dock::panel_label(panel)).map(|node| node.rect()).find(|r| rail.contains(r.center())).expect("rail icon").center()
+}
+
+/// The rail sends Show Panel for a closed dock tab, which brings it back where Activate Panel
+/// (the rail's command before flyouts) puts it.
+#[test]
+fn customized_icon_rail_reopens_a_closed_dock_tab_where_activate_puts_it() {
+    for panel in ["properties", "pages"] {
+        let setup = || {
+            let mut app = app();
+            app.run("file.new", json!({})).unwrap();
+            app.run("window.panel.float", json!({"panel":"layers"})).unwrap();
+            app.run("window.panel.close", json!({"panel":panel})).unwrap();
+            app
+        };
+        let mut expected = setup();
+        expected.run("window.panel.activate", json!({"panel":panel})).unwrap();
+        let mut h = crate::test_window::open(setup(), vec2(1440.0, 900.0));
+        let icon = rail_icon(&h, panel);
+        crate::test_window::click_at(&mut h, icon);
+        let ui = &h.state().app.ui;
+        assert_eq!(ui.docking, expected.ui.docking, "{panel}");
+        assert!(ui.docking.as_ref().unwrap().contains(&panel.to_string()), "{panel}");
+        assert_eq!(ui.docking_hidden, expected.ui.docking_hidden, "{panel}");
+        assert_eq!(ui.docking_opened.as_deref(), Some(panel));
+        assert!(ui.open_panel.is_none(), "{panel}");
+    }
+}
+
+/// Paragraph Styles' icon opens its flyout like any other icon; Window › Paragraph Styles still
+/// opens the floating Character Styles | Paragraph Styles group.
+#[test]
+fn customized_icon_rail_opens_paragraph_styles_as_a_flyout() {
+    let mut app = app();
+    app.run("window.panel.float", json!({"panel":"layers"})).unwrap();
+    let before = app.ui.docking.clone();
+    let mut h = crate::test_window::open(app, vec2(1440.0, 900.0));
+    let icon = rail_icon(&h, "paragraphStyles");
+    crate::test_window::click_at(&mut h, icon);
+    assert_eq!(h.state().app.ui.open_panel.as_deref(), Some("paragraphStyles"));
+    assert_eq!(h.state().app.ui.docking, before);
+    assert!(h.ctx.memory(|m| m.area_rect(egui::Id::new("panel_flyout"))).is_some());
+    crate::test_window::click_at(&mut h, icon);
+    assert!(h.state().app.ui.open_panel.is_none());
+    h.state_mut().app.run("window.panel", json!({"panel":"paragraphStyles"})).unwrap();
+    let layout = h.state().app.ui.docking.clone().unwrap();
+    assert!(layout.floating.iter().any(|g| g.panels == ["characterStyles", "paragraphStyles"]), "{:?}", layout.floating);
+}
+
+/// As in InDesign, an icon panel's flyout collapses when a panel drag starts.
+#[test]
+fn dragging_a_panel_collapses_the_icon_panel_flyout() {
+    let mut app = app();
+    app.run("window.panel.float", json!({"panel":"layers"})).unwrap();
+    app.run("window.panel", json!({"panel":"color"})).unwrap();
+    let before = app.ui.docking.clone();
+    let mut h = crate::test_window::open(app, vec2(1440.0, 900.0));
+    assert!(h.ctx.memory(|m| m.area_rect(egui::Id::new("panel_flyout"))).is_some());
+    let tab = egui::Id::new("designcraft-panel-docking").with(("tab", &"pages".to_string()));
+    let from = h.ctx.read_response(tab).expect("Pages tab").rect.center();
+    h.event(Event::PointerMoved(from));
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    assert_eq!(h.state().app.ui.open_panel.as_deref(), Some("color"), "a press alone keeps the flyout");
+    for step in 1..=6 {
+        h.event(Event::PointerMoved(from - vec2(30.0 * step as f32, 0.0)));
+        h.run_steps(1);
+    }
+    assert!(h.state().app.ui.open_panel.is_none(), "the drag collapses the flyout");
+    h.event(Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+    assert!(h.state().app.ui.open_panel.is_none());
+    assert_eq!(h.state().app.ui.docking, before, "a cancelled drag leaves the dock as it was");
+
+    // So does moving a floating group by its grip.
+    h.state_mut().app.run("window.panel", json!({"panel":"color"})).unwrap();
+    h.run_steps(2);
+    let grip = egui::Id::new("designcraft-panel-docking").with(("move-group", Some(&"layers".to_string())));
+    let from = h.ctx.read_response(grip).expect("Layers grip").rect.center();
+    h.event(Event::PointerMoved(from));
+    h.run_steps(1);
+    assert_eq!(h.state().app.ui.open_panel.as_deref(), Some("color"));
+    h.event(Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    for step in 1..=6 {
+        h.event(Event::PointerMoved(from + vec2(0.0, 20.0 * step as f32)));
+        h.run_steps(1);
+    }
+    assert!(h.state().app.ui.open_panel.is_none(), "moving a floating group collapses the flyout");
+    h.event(Event::PointerButton { pos: from + vec2(0.0, 120.0), button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+}
+
 fn harness(app: DesignApp, size: egui::Vec2) -> Harness<'static, DesignApp> {
     let mut ready = false;
     let mut harness = Harness::builder().with_size(size).with_step_dt(1.0 / 60.0).build_ui_state(
