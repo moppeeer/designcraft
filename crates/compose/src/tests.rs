@@ -7329,3 +7329,35 @@ fn balancing_above_a_spanning_paragraph_keeps_a_heading_with_text_under_a_wrap()
     assert!(ft.lines.iter().any(|l| l.para == 3), "the spanning paragraph follows in the frame");
     assert!(!cs.is_overset());
 }
+
+/// Balance Columns after a column break (the band's tail, the last two of three columns), with a
+/// heading kept with the paragraph after it near the balanced bottom. A trial bottom that leaves
+/// the heading alone at the foot of a column moves it on to the next column, as without
+/// balancing; that layout fits, so balancing keeps it: the columns end within two lines of each
+/// other and the heading stays with its text. Failing the trial instead would keep the heading
+/// low in the middle column and leave the last one four lines short.
+#[test]
+fn balanced_columns_after_a_break_move_a_kept_heading_on() {
+    let pre: String = LOREM.split(' ').cycle().take(85).collect::<Vec<_>>().join(" ");
+    let text = format!(
+        "{LOREM}{}
+{pre}
+Heading
+{LOREM}
+{LOREM}",
+        designcraft_doc::story::COLUMN_BREAK
+    );
+    let (mut d, sid, fid) = doc_with(&text, Rect::new(0.0, 0.0, 540.0, 500.0), ParaAttrs::default());
+    let o = &mut d.item_mut(fid).unwrap().text_frame_mut().unwrap().options;
+    o.columns = 3;
+    o.balance_columns = true;
+    d.story_mut(sid).unwrap().paras[2].para.keep_with_next = Some(2);
+    let cs = compose_story(&d, sid, &ComposeOptions::default());
+    assert!(!cs.is_overset());
+    let ft = &cs.frames[0];
+    assert_no_overlap(ft);
+    let first = |p: usize| ft.lines.iter().find(|l| l.para == p).expect("the paragraph is in the frame");
+    assert_eq!((first(2).column, first(3).column), (2, 2), "the heading starts the last column with its text");
+    let ends = column_ends(ft);
+    assert!((ends[2] - ends[1]).abs() <= 2.0 * 14.4 + 1e-6, "the balanced columns end within two lines: {ends:?}");
+}
