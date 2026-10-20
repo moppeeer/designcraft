@@ -440,16 +440,41 @@ struct PresentationReturnView {
     spread: Option<SpreadRef>,
 }
 
+/// The viewport each open document was last shown in, one list per pane. A document's view
+/// was laid out against its own last viewport, so this stays per document; documents that
+/// have closed are dropped from it, with their saved views, on the pane's next canvas frame,
+/// so nothing builds up.
+#[derive(Clone, Default)]
+struct PresentationViewports(Vec<(u64, Rect)>);
+
+fn presentation_key(uid: u64, pane: u8, editing_parents: bool) -> egui::Id {
+    egui::Id::new(("presentation-return-view", uid, pane, editing_parents))
+}
+
 /// Presentation fits its spread into a different viewport. Keep that camera change out of
 /// the editing view, while retaining a spread reached with the presentation controls.
 fn presentation_view(app: &mut DesignApp, ctx: &egui::Context, rect: Rect, presenting: bool) {
-    let Some(st) = app.session.active() else { return };
-    let key = egui::Id::new(("presentation-return-view", st.uid, app.pane, st.editing_parents));
-    let (saved, old_rect) = ctx.data_mut(|data| {
-        let old_rect = data.get_temp::<Rect>(key.with("viewport")).unwrap_or(rect);
-        data.insert_temp(key.with("viewport"), rect);
-        (data.get_temp::<PresentationReturnView>(key), old_rect)
+    let (pane, open, active) = (app.pane, app.session.documents(), app.session.active().map(|st| st.uid));
+    let old_rect = ctx.data_mut(|data| {
+        let list = data.get_temp_mut_or_default::<PresentationViewports>(egui::Id::new(("presentation-viewports", pane)));
+        let closed: Vec<u64> = list.0.iter().map(|e| e.0).filter(|uid| !open.iter().any(|d| d.uid == *uid)).collect();
+        list.0.retain(|(uid, _)| !closed.contains(uid));
+        let old_rect = active.map(|uid| match list.0.iter_mut().find(|(u, _)| *u == uid) {
+            Some((_, old)) => std::mem::replace(old, rect),
+            None => {
+                list.0.push((uid, rect));
+                rect
+            }
+        });
+        for key in closed.into_iter().flat_map(|uid| [false, true].map(|parents| presentation_key(uid, pane, parents))) {
+            data.remove::<PresentationReturnView>(key);
+            data.remove::<Point>(key.with("last-centre"));
+        }
+        old_rect
     });
+    let (Some(st), Some(old_rect)) = (app.session.active(), old_rect) else { return };
+    let key = presentation_key(st.uid, pane, st.editing_parents);
+    let saved = ctx.data(|data| data.get_temp::<PresentationReturnView>(key));
     if !presenting && saved.is_none() {
         return;
     }
@@ -457,8 +482,12 @@ fn presentation_view(app: &mut DesignApp, ctx: &egui::Context, rect: Rect, prese
     let centre = |view: View, rect: Rect| {
         Point::new(view.origin.x + f64::from(rect.width()) / (2.0 * view.zoom), view.origin.y + f64::from(rect.height()) / (2.0 * view.zoom))
     };
-    // The screen-mode command restores its entry view before the next canvas frame. Keep the
-    // last presented centre separately so that restoration does not lose navigation here.
+    // Ordering: `set_screen_mode` (menus.rs) puts the entry view back inside the command that
+    // leaves Presentation, so on the first editing frame `app.view()` no longer shows the last
+    // presented spread. That is why the presented centre is kept here, and why this frame's
+    // result stands: nothing restores the entry view after it. Moving that restore later
+    // (deferred, or into a frame after this one) would undo the navigation;
+    // `presentation_exit_restores_the_entry_view_inside_the_command` checks the order.
     let current = if presenting {
         let at = centre(view, old_rect);
         ctx.data_mut(|data| data.insert_temp(key.with("last-centre"), at));
@@ -3113,6 +3142,87 @@ mod tests {
         h.run_steps(3);
         assert_eq!(h.state().app.view().unwrap().zoom, 0.4);
         assert!((h.state().app.view().unwrap().origin - first.origin).length() < 1e-8);
+    }
+
+    #[test]
+    fn presentation_exit_restores_the_entry_view_inside_the_command() {
+        // `presentation_view` relies on `set_screen_mode` (menus.rs) putting the entry view back
+        // inside the command that leaves Presentation, before the next canvas frame, so that the
+        // canvas re-centres the last presented spread on top of it. A restore moved later fails
+        // the first two assertions; one landing after the canvas frame fails the loop below.
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), Default::default());
+        app.run("file.new", json!({"pages":7,"facingPages":true})).unwrap();
+        let mut h = crate::test_window::open(app, vec2(1440.0, 900.0));
+        h.state_mut().app.run("view.zoom", json!({"zoom":0.5})).unwrap();
+        h.state_mut().app.run("view.goToPage", json!({"page":3})).unwrap();
+        h.run_steps(3);
+        let entry = *h.state().app.view().unwrap();
+        h.state_mut().app.run("view.screenMode", json!({"mode":"presentation"})).unwrap();
+        h.run_steps(3);
+        for pressed in [true, false] {
+            let modifiers = egui::Modifiers::NONE;
+            h.event(egui::Event::Key { key: egui::Key::ArrowRight, physical_key: None, pressed, repeat: false, modifiers });
+        }
+        h.run_steps(3);
+        h.state_mut().app.run("view.screenMode", json!({"mode":"normal"})).unwrap();
+        assert_eq!(*h.state().app.view().unwrap(), entry, "the command restores the entry view before any frame");
+        assert!(h.state().app.ui.presentation_view.is_none(), "nothing is left for a later restore");
+        for steps in [1, 3] {
+            h.run_steps(steps);
+            let app = &h.state().app;
+            let layout = CanvasLayout::new(&app.session.active().unwrap().doc, false);
+            let rect = app.canvas_rect.unwrap();
+            let centre = Xf::new(rect, app.view().unwrap()).to_canvas(rect.center());
+            assert_eq!(app.view().unwrap().zoom, entry.zoom);
+            assert!((centre - layout.slots[2].bounds.center()).length() < 1e-8, "the last presented spread stays centred");
+        }
+    }
+
+    #[test]
+    fn presentation_entries_go_when_their_document_closes() {
+        let entries = |h: &egui_kittest::Harness<'_, crate::test_window::Window>| {
+            h.ctx.data(|d| {
+                let viewports = d.get_temp::<PresentationViewports>(egui::Id::new(("presentation-viewports", 0u8)));
+                (viewports.map_or(0, |v| v.0.len()), d.count::<PresentationReturnView>())
+            })
+        };
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), Default::default());
+        app.run("file.new", json!({"pages":2})).unwrap();
+        let first = app.session.active().unwrap().uid;
+        let mut h = crate::test_window::open(app, vec2(1440.0, 900.0));
+        h.run_steps(3);
+        for _ in 0..3 {
+            h.state_mut().app.run("file.new", json!({"pages":2})).unwrap();
+            h.run_steps(3);
+        }
+        assert_eq!(entries(&h), (4, 0), "one viewport per open document");
+        // Leaving Presentation in another document keeps the first one's saved view for its return.
+        h.state_mut().app.run("file.activate", json!({"index":0})).unwrap();
+        h.run_steps(3);
+        h.state_mut().app.run("view.screenMode", json!({"mode":"presentation"})).unwrap();
+        h.run_steps(3);
+        h.state_mut().app.run("file.activate", json!({"index":3})).unwrap();
+        h.run_steps(3);
+        h.state_mut().app.run("view.screenMode", json!({"mode":"normal"})).unwrap();
+        h.run_steps(3);
+        assert_eq!(entries(&h), (4, 1));
+        let last_centre = presentation_key(first, 0, false).with("last-centre");
+        assert!(h.ctx.data(|d| d.get_temp::<Point>(last_centre)).is_some());
+        h.state_mut().app.run("file.close", json!({"index":0})).unwrap();
+        h.run_steps(3);
+        assert_eq!(entries(&h), (3, 0), "a closed document's viewport and saved view are removed");
+        assert!(h.ctx.data(|d| d.get_temp::<Point>(last_centre)).is_none());
+        while h.state().app.session.active().is_some() {
+            h.state_mut().app.run("file.close", json!({})).unwrap();
+            h.run_steps(3);
+        }
+        // With no document the start screen replaces the canvas; the next document shown prunes.
+        h.state_mut().app.run("file.new", json!({"pages":2})).unwrap();
+        h.run_steps(3);
+        let uid = h.state().app.session.active().unwrap().uid;
+        let viewports = h.ctx.data(|d| d.get_temp::<PresentationViewports>(egui::Id::new(("presentation-viewports", 0u8))));
+        assert_eq!(viewports.unwrap().0.iter().map(|e| e.0).collect::<Vec<_>>(), vec![uid], "only the open document is kept");
+        assert_eq!(entries(&h), (1, 0));
     }
 
     #[test]
