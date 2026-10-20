@@ -29,6 +29,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "Вирізати"),
     ("Copy", "Копіювати"),
     ("Paste", "Вставити"),
+    ("Content-Aware Fit", "Підгонка з урахуванням вмісту"),
     ("Paste Vector Art", "Вставити векторну графіку"),
     ("Baseline Options", "Параметри базової лінії"),
     ("Fixed Number", "Фіксована кількість"),

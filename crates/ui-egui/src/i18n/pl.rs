@@ -29,6 +29,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "Wytnij"),
     ("Copy", "Kopiuj"),
     ("Paste", "Wklej"),
+    ("Content-Aware Fit", "Dopasowanie z uwzględnieniem zawartości"),
     ("Clear", "Wyczyść"),
     ("Duplicate", "Powiel"),
     ("Select All", "Zaznacz wszystko"),

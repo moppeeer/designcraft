@@ -33,6 +33,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "Вырезать"),
     ("Copy", "Копировать"),
     ("Paste", "Вставить"),
+    ("Content-Aware Fit", "Подгонка с учетом содержимого"),
     ("Clear", "Очистить"),
     ("Duplicate", "Дублировать"),
     ("Select All", "Выделить все"),
