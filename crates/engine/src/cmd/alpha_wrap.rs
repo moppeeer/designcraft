@@ -20,20 +20,25 @@ const MAX_EDGES: usize = 1 << 16;
 pub(crate) fn sync(doc: &mut Document) {
     let mut wanted: Vec<(AssetId, u8)> = Vec::new();
     for sp in doc.spreads.iter().chain(doc.parents.iter()) {
-        for it in &sp.items {
-            if it.wrap.mode == WrapMode::Contour
-                && it.wrap.contour == ContourType::AlphaChannel
-                && let Some(g) = it.graphic()
-                && !wanted.contains(&(g.asset, it.wrap.alpha_threshold))
-            {
-                wanted.push((g.asset, it.wrap.alpha_threshold));
-            }
+        // Every frame, in groups and Paste Into containers too, with the wrap set on the frame or
+        // on its placed graphic (Direct Selection sets the graphic's).
+        for top in &sp.items {
+            top.walk(&mut |it| {
+                let Some(g) = it.graphic() else { return };
+                for w in [&it.wrap, &g.wrap] {
+                    if w.mode == WrapMode::Contour && w.contour == ContourType::AlphaChannel && !wanted.contains(&(g.asset, w.alpha_threshold)) {
+                        wanted.push((g.asset, w.alpha_threshold));
+                    }
+                }
+            });
         }
     }
     if wanted.is_empty() && doc.alpha_outlines.is_empty() {
         return;
     }
-    doc.alpha_outlines.retain(|o| wanted.contains(&(o.asset, o.threshold)) && doc.assets.contains_key(&o.asset));
+    // An outline traced from data the asset no longer has (relinked or updated) is traced again.
+    let assets = &doc.assets;
+    doc.alpha_outlines.retain(|o| wanted.contains(&(o.asset, o.threshold)) && assets.get(&o.asset).is_some_and(|a| o.traced_from(&a.data)));
     for (asset, threshold) in wanted {
         if doc.alpha_outline(asset, threshold).is_some() {
             continue;
@@ -47,7 +52,7 @@ pub(crate) fn sync(doc: &mut Document) {
 
 /// The outline of the pixels of `data` more opaque than `threshold`. None for an image that
 /// can't be read, is too large, or has no transparency (its contour is its rectangle).
-pub(crate) fn trace(data: &[u8], asset: AssetId, threshold: u8) -> Option<AlphaOutline> {
+pub(crate) fn trace(data: &Arc<Vec<u8>>, asset: AssetId, threshold: u8) -> Option<AlphaOutline> {
     let (w, h) = designcraft_images::pixel_size(data)?;
     if w == 0 || h == 0 || u64::from(w) * u64::from(h) > MAX_PIXELS {
         return None;
@@ -78,7 +83,8 @@ pub(crate) fn trace(data: &[u8], asset: AssetId, threshold: u8) -> Option<AlphaO
                 }
                 PathData::from_bezpath(&p)
             };
-            return Some(AlphaOutline { asset, threshold, width: w, height: h, outer: path(&outer), holes: path(&holes) });
+            let source = Arc::downgrade(data);
+            return Some(AlphaOutline { asset, threshold, width: w, height: h, outer: path(&outer), holes: path(&holes), source });
         }
         grid /= 2;
     }
@@ -195,14 +201,14 @@ mod tests {
     fn traces_outer_boundaries_and_holes_apart() {
         // A ring: a square with a square hole.
         let data = png(|x, y| (8..56).contains(&x) && (8..56).contains(&y) && !((24..40).contains(&x) && (24..40).contains(&y)));
-        let o = trace(&data, AssetId(1), 25).unwrap();
+        let o = trace(&Arc::new(data), AssetId(1), 25).unwrap();
         assert_eq!((o.width, o.height), (64, 64));
         assert_eq!((o.outer.subpaths.len(), o.holes.subpaths.len()), (1, 1));
         let (a, b) = (o.outer.bounds().unwrap(), o.holes.bounds().unwrap());
         assert_eq!((a.x0, a.y0, a.x1, a.y1), (8.0, 8.0, 56.0, 56.0));
         assert_eq!((b.x0, b.y0, b.x1, b.y1), (24.0, 24.0, 40.0, 40.0));
         // An opaque image has no alpha outline.
-        assert!(trace(&png(|_, _| true), AssetId(1), 25).is_none());
+        assert!(trace(&Arc::new(png(|_, _| true)), AssetId(1), 25).is_none());
     }
 
     #[test]
@@ -227,6 +233,58 @@ mod tests {
         // Wrap off: the outline goes.
         s.execute("object.textWrap", &json!({"ids": [id], "mode": "none"})).unwrap();
         assert!(s.doc().unwrap().doc.alpha_outlines.is_empty());
+    }
+
+    /// Outlines are traced for a wrap set on the placed graphic and for frames inside groups, and
+    /// traced again when the image's data changes under the same asset (relink, link update).
+    #[test]
+    fn graphic_wraps_nested_frames_and_relinked_images_get_outlines() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let place = |s: &mut Session, x: u64| {
+            let data = png(|x, _| (16..48).contains(&x));
+            s.execute("file.place", &json!({"base64": crate::cmd::file::base64_encode(&data), "name": "cut.png", "x": x, "y": 100, "width": 128}))
+                .unwrap()["id"]
+                .as_u64()
+                .unwrap()
+        };
+        let image = place(&mut s, 100);
+        // The wrap on the graphic (Direct Selection), not the frame.
+        s.execute("object.textWrap", &json!({"ids": [image], "content": true, "mode": "contour", "contour": "alphaChannel"})).unwrap();
+        let frame_wrap = s.doc().unwrap().doc.item(designcraft_doc::ItemId(image)).unwrap().wrap.mode;
+        assert_eq!(frame_wrap, WrapMode::None, "the frame has no wrap of its own");
+        assert_eq!(s.doc().unwrap().doc.alpha_outlines.len(), 1, "traced for the graphic's wrap");
+        // In a group with another frame: still traced.
+        let other = s.execute("frame.create", &json!({"rect": [300, 100, 350, 150]})).unwrap()["id"].as_u64().unwrap();
+        s.execute("object.group", &json!({"ids": [image, other]})).unwrap();
+        let d = &s.doc().unwrap().doc;
+        assert!(d.find(designcraft_doc::ItemId(image)).unwrap().path.len() > 1, "the frame is nested");
+        assert_eq!(d.alpha_outlines.len(), 1, "a nested frame keeps its outline");
+        // A frame placed and grouped before its wrap is set: traced too.
+        let second = place(&mut s, 400);
+        let other2 = s.execute("frame.create", &json!({"rect": [600, 100, 650, 150]})).unwrap()["id"].as_u64().unwrap();
+        s.execute("object.group", &json!({"ids": [second, other2]})).unwrap();
+        s.execute("object.textWrap", &json!({"ids": [second], "mode": "contour", "contour": "alphaChannel", "threshold": 200})).unwrap();
+        assert_eq!(s.doc().unwrap().doc.alpha_outlines.len(), 2);
+        // The image data replaced under the same asset, as a relink does: traced again.
+        let Some(designcraft_doc::Content::Graphic(g)) = s.doc().unwrap().doc.item(designcraft_doc::ItemId(image)).map(|it| it.content.clone())
+        else {
+            panic!("a graphic")
+        };
+        let narrower = Arc::new(png(|x, _| (24..40).contains(&x)));
+        s.edit(|d, _| {
+            let a = d.assets.get(&g.asset).unwrap();
+            let mut a = (**a).clone();
+            a.data = narrower.clone();
+            d.assets.insert(g.asset, Arc::new(a));
+            Ok(())
+        })
+        .unwrap();
+        let d = &s.doc().unwrap().doc;
+        let o = d.alpha_outline(g.asset, designcraft_doc::DEFAULT_ALPHA_THRESHOLD).unwrap();
+        assert!(o.traced_from(&narrower));
+        let b = o.outer.bounds().unwrap();
+        assert_eq!((b.x0, b.x1), (24.0, 40.0), "the new image's outline");
     }
 
     /// An image placed 128 pt wide at (100, 100) (2 pt per pixel), its wrap a contour with no

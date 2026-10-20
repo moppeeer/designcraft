@@ -604,7 +604,7 @@ impl PdfCrop {
 /// The outline of a raster image's visible pixels (Text Wrap › Contour › Alpha Channel), in the
 /// image's pixel space (0..width, 0..height). Derived from the image, so not saved: the engine
 /// traces it again when a document opens.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct AlphaOutline {
     pub asset: AssetId,
     pub threshold: u8,
@@ -614,6 +614,26 @@ pub struct AlphaOutline {
     pub outer: designcraft_geom::PathData,
     /// The boundaries of transparent holes those areas enclose (wound the other way).
     pub holes: designcraft_geom::PathData,
+    /// The image data it was traced from: a relink or link update replaces the asset's data
+    /// under the same id, and the outline is traced again. (Weak, so it doesn't keep old image
+    /// data alive, and its address can't be reused by new data while it's held.)
+    pub source: std::sync::Weak<Vec<u8>>,
+}
+
+impl AlphaOutline {
+    /// Traced from `data`, the asset's current image data.
+    pub fn traced_from(&self, data: &Arc<Vec<u8>>) -> bool {
+        std::ptr::eq(self.source.as_ptr(), Arc::as_ptr(data))
+    }
+}
+
+impl PartialEq for AlphaOutline {
+    fn eq(&self, other: &Self) -> bool {
+        (self.asset, self.threshold, self.width, self.height) == (other.asset, other.threshold, other.width, other.height)
+            && self.outer == other.outer
+            && self.holes == other.holes
+            && self.source.ptr_eq(&other.source)
+    }
 }
 
 impl Asset {
