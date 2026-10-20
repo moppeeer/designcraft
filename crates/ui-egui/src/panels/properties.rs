@@ -61,15 +61,23 @@ fn selection_title(app: &DesignApp, info: &Option<SelInfo>) -> String {
     }
     match info {
         None => crate::i18n::tr(&app.ui.language, "No Selection").into(),
-        // Several objects, named as InDesign names them: "Text Frames" or "Linked Files" when all
-        // are of that kind, "Mixed Objects" when the kinds differ.
+        // Several objects, named as InDesign names them: "Text Frames", "Linked Files" or "Frames"
+        // (empty graphic frames) when all are of that kind, "Mixed Objects" when the kinds differ.
         Some(i) if i.count > 1 => {
-            let mut kinds = st.selection.items.iter().map(|id| st.doc.item(*id).map(|it| it.default_label()));
+            let kind = |it: &designcraft_doc::Item| {
+                if it.object_style == designcraft_doc::BASIC_GRAPHICS_FRAME && matches!(it.content, designcraft_doc::Content::Unassigned) {
+                    "<graphic frame>"
+                } else {
+                    it.default_label()
+                }
+            };
+            let mut kinds = st.selection.items.iter().map(|id| st.doc.item(*id).map(kind));
             let first = kinds.next().flatten();
             let title = match first {
                 _ if !kinds.all(|k| k == first) => "Mixed Objects",
                 Some("<text frame>") => "Text Frames",
                 Some("<image>") => "Linked Files",
+                Some("<graphic frame>") => "Frames",
                 _ => "Multiple Objects",
             };
             crate::i18n::tr(&app.ui.language, title).into()
@@ -3453,6 +3461,17 @@ mod tests {
         // A number, its text and the square under it: the tutorial's column.
         assert_eq!(title(&mut app, vec![a, b, rect]), "Mixed Objects");
         assert_eq!(title(&mut app, vec![a]), "Text Frame");
+        // Empty graphic frames, as the tutorial's slanted row: "Frames".
+        let frames: Vec<u64> = (0..2)
+            .map(|k| {
+                app.run("frame.create", json!({"rect": [72 + 120 * k, 400, 172 + 120 * k, 480], "content": "graphic"})).unwrap()["id"]
+                    .as_u64()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(title(&mut app, frames.clone()), "Frames");
+        let shape = app.run("frame.create", json!({"rect": [72, 500, 172, 580], "content": "unassigned"})).unwrap()["id"].as_u64().unwrap();
+        assert_eq!(title(&mut app, vec![frames[0], shape]), "Mixed Objects", "a frame and a drawn rectangle");
         // Placed images, as the tutorial's three pictures.
         let png = designcraft_render::Rendered { width: 40, height: 40, pixels: vec![200u8; 40 * 40 * 4] }.to_png();
         let b64 = designcraft_engine::cmd::base64_encode(&png);

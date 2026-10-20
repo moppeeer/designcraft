@@ -35,6 +35,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Text Frames", "Textrahmen"),
     ("Linked Files", "Verknüpfte Dateien"),
     ("Linked File", "Verknüpfte Datei"),
+    ("Frames", "Rahmen"),
     ("Inches Decimal", "Zoll dezimal"),
     ("Back", "Zurück"),
     ("Warning", "Warnung"),

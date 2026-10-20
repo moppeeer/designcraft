@@ -37,6 +37,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Text Frames", "Текстовые фреймы"),
     ("Linked Files", "Связанные файлы"),
     ("Linked File", "Связанный файл"),
+    ("Frames", "Фреймы"),
     ("Clear", "Очистить"),
     ("Duplicate", "Дублировать"),
     ("Select All", "Выделить все"),

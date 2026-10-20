@@ -34,6 +34,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Text Frames", "إطارات نص"),
     ("Linked Files", "ملفات مرتبطة"),
     ("Linked File", "ملف مرتبط"),
+    ("Frames", "إطارات"),
     ("Paste Vector Art", "لصق رسم متجه"),
     ("Baseline Options", "خيارات خط الأساس"),
     ("Fixed Number", "عدد ثابت"),

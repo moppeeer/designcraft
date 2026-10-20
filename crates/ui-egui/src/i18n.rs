@@ -93,6 +93,7 @@ const TABLE: &[(&str, [&str; 5])] = &[
     ("Text Frames", ["Text Frames", "Blocs de texte", "Marcos de texto", "Text Frames", "文本框架"]),
     ("Linked Files", ["Linked Files", "Fichiers liés", "Archivos vinculados", "Linked Files", "链接的文件"]),
     ("Linked File", ["Linked File", "Fichier lié", "Archivo vinculado", "Linked File", "链接的文件"]),
+    ("Frames", ["Frames", "Blocs", "Marcos", "Frames", "框架"]),
     ("Hide Rulers", ["Lineale ausblenden", "Masquer les règles", "Ocultar reglas", "定規を隠す", "隐藏标尺"]),
     ("Inches Decimal", ["Zoll dezimal", "Pouces décimaux", "Pulgadas decimales", "インチ（10 進）", "十进制英寸"]),
     (

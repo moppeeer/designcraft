@@ -33,6 +33,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Text Frames", "Ramki tekstowe"),
     ("Linked Files", "Połączone pliki"),
     ("Linked File", "Połączony plik"),
+    ("Frames", "Ramki"),
     ("Clear", "Wyczyść"),
     ("Duplicate", "Powiel"),
     ("Select All", "Zaznacz wszystko"),

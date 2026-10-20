@@ -33,6 +33,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Text Frames", "Текстові фрейми"),
     ("Linked Files", "Пов’язані файли"),
     ("Linked File", "Пов’язаний файл"),
+    ("Frames", "Фрейми"),
     ("Paste Vector Art", "Вставити векторну графіку"),
     ("Baseline Options", "Параметри базової лінії"),
     ("Fixed Number", "Фіксована кількість"),

@@ -35,6 +35,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Text Frames", "Quadros de texto"),
     ("Linked Files", "Arquivos vinculados"),
     ("Linked File", "Arquivo vinculado"),
+    ("Frames", "Quadros"),
     ("Paste Vector Art", "Colar arte vetorial"),
     ("Baseline Options", "Opções de linha de base"),
     ("Fixed Number", "Número fixo"),
