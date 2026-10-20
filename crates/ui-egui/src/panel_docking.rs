@@ -181,7 +181,9 @@ pub(crate) fn command(app: &mut DesignApp, id: &str, params: &Value) -> Option<R
     if id == "window.panel.closeGroup" {
         return Some(close_group(app, params));
     }
+    // A click on a panel's icon opens its flyout, not the Window menu's floating group.
     if id == "window.panel"
+        && params.get("from").and_then(Value::as_str) != Some("icons")
         && let Some(result) = open_floating_group(app, params)
     {
         return Some(result);
@@ -797,6 +799,10 @@ pub(crate) fn show(app: &mut DesignApp, ui: &mut egui::Ui) -> bool {
         }
         ui.ctx().data_mut(|data| data.remove::<LegacyDrag>(egui::Id::new("designcraft-panel-docking").with("legacy-origin")));
     }
+    if app.ui.open_panel.is_some() && dock_drag_started(ui.ctx()) {
+        // As in InDesign, starting to drag a panel collapses the icon panel's flyout.
+        app.ui.open_panel = None;
+    }
     for action in output.actions {
         if let Err(error) = app.run("window.panel.layout", json!({"action": action})) {
             app.ui.status = error;
@@ -835,6 +841,14 @@ pub(crate) fn show(app: &mut DesignApp, ui: &mut egui::Ui) -> bool {
     }
     icon_rail(app, ui);
     true
+}
+
+/// A drag began this frame on one of the docking surface's own controls: a tab, a floating
+/// group's grip, a divider or a resize corner.
+fn dock_drag_started(ctx: &egui::Context) -> bool {
+    let Some(started) = ctx.drag_started_id() else { return false };
+    let owned = egui::Id::new("designcraft-panel-docking").with("owned-interactions");
+    ctx.data(|data| data.get_temp::<Vec<egui::Id>>(owned)).is_some_and(|ids| ids.contains(&started))
 }
 
 fn icon_rail(app: &mut DesignApp, ui: &mut egui::Ui) {
@@ -883,7 +897,11 @@ fn icon_rail(app: &mut DesignApp, ui: &mut egui::Ui) {
                         let response = crate::icons::button(ui, icon, 28.0, open, crate::i18n::tr(&app.ui.language, label))
                             .interact(egui::Sense::click_and_drag());
                         if response.clicked() {
-                            let _ = app.run(if open { "window.panel.close" } else { "window.panel" }, json!({"panel":id}));
+                            let _ = if open {
+                                app.run("window.panel.close", json!({"panel":id}))
+                            } else {
+                                app.run("window.panel", json!({"panel":id, "from":"icons"}))
+                            };
                         }
                         legacy_tab(app, ui, id, &response);
                     }
