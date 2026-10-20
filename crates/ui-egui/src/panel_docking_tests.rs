@@ -77,6 +77,66 @@ fn iconic_groups_keep_their_tabs_when_reopened_floated_and_reset() {
     assert_eq!(app.ui.open_panel.as_deref(), Some("paragraphStyles"));
 }
 
+/// Any panels can be collapsed to icons together, including dock-only ones such as Properties.
+#[test]
+fn a_floating_group_of_dock_tabs_collapses_to_icons_and_reopens_as_one_flyout() {
+    let mut app = app();
+    app.run("file.new", json!({})).unwrap();
+    app.run("window.panel.float", json!({"panel":"properties","x":300,"y":180,"width":320,"height":300})).unwrap();
+    app.run("window.panel.move", json!({"panel":"layers","anchor":"properties"})).unwrap();
+    let root = app.ui.docking.as_ref().unwrap().root.clone();
+    let members = app.ui.docking.as_ref().unwrap().floating[0].panels.clone();
+    assert_eq!(members.len(), 2);
+    app.run("window.panel.dockGroup", json!({"panel":"properties","target":"icons"})).unwrap();
+    let layout = app.ui.docking.clone().unwrap();
+    assert!(layout.floating.is_empty());
+    assert_eq!(layout.root, root);
+    assert!(!layout.contains(&"properties".to_string()) && !layout.contains(&"layers".to_string()));
+    assert_eq!(app.ui.icon_groups.as_deref(), Some(std::slice::from_ref(&members)));
+    assert_eq!(iconic_group(&app, "properties"), members);
+    app.run("window.panel", json!({"panel":"properties"})).unwrap();
+    assert_eq!(app.ui.open_panel.as_deref(), Some("properties"));
+    assert_eq!(app.ui.docking, Some(layout.clone()));
+
+    let mut h = crate::test_window::open(app, vec2(1440.0, 900.0));
+    assert!(h.ctx.memory(|m| m.area_rect(egui::Id::new("panel_flyout"))).is_some());
+    let rail = crate::test_window::panel_rect(&h, "shared-panel-icons");
+    let tab = h.query_all_by_label("Layers").find(|node| node.rect().right() < rail.left()).expect("Layers tab in the flyout");
+    tab.click();
+    h.run_steps(4);
+    assert_eq!(h.state().app.ui.open_panel.as_deref(), Some("layers"));
+    assert_eq!(h.state().app.ui.docking, Some(layout));
+    h.state_mut().app.run("window.panel.floatGroup", json!({"panel":"layers","x":250,"y":120})).unwrap();
+    let group = h.state().app.ui.docking.as_ref().unwrap().floating[0].clone();
+    assert_eq!(group.panels, members);
+    assert_eq!(group.panels[group.active], "layers");
+}
+
+/// A wide iconic group's flyout scrolls its tab strip so the tab of the panel that opened is in
+/// view, then leaves the strip where the user scrolls it.
+#[test]
+fn a_wide_iconic_group_flyout_shows_the_opened_panels_tab() {
+    let mut app = app();
+    app.run("file.new", json!({})).unwrap();
+    app.run("window.panel.float", json!({"panel":"stroke","x":300,"y":180,"width":320,"height":300})).unwrap();
+    for panel in ["swatches", "color", "gradient", "effects", "character", "paragraph"] {
+        app.run("window.panel.move", json!({"panel":panel,"anchor":"stroke"})).unwrap();
+    }
+    app.run("window.panel.dockGroup", json!({"panel":"stroke","target":"icons"})).unwrap();
+    let mut h = crate::test_window::open(app, vec2(1440.0, 900.0));
+    let rail = crate::test_window::panel_rect(&h, "shared-panel-icons");
+    let tab = |h: &Harness<'static, crate::test_window::Window>, label: &str| {
+        h.query_all_by_label(label).map(|node| node.rect()).find(|r| r.right() < rail.left()).expect("flyout tab")
+    };
+    for (panel, label) in [("paragraph", "Paragraph"), ("stroke", "Stroke"), ("character", "Character")] {
+        h.state_mut().app.run("window.panel", json!({"panel":panel})).unwrap();
+        h.run_steps(6);
+        let flyout = h.ctx.memory(|m| m.area_rect(egui::Id::new("panel_flyout"))).expect("flyout");
+        let at = tab(&h, label);
+        assert!(at.left() >= flyout.left() - 0.5 && at.right() <= flyout.right() + 0.5, "{label} tab {at:?} outside flyout {flyout:?}");
+    }
+}
+
 #[test]
 fn invalid_iconic_group_requests_preserve_ownership() {
     let mut app = floating_style_group();
