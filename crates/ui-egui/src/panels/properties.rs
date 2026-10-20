@@ -1080,6 +1080,10 @@ fn quick_actions_object(app: &mut DesignApp, ui: &mut Ui, i: &SelInfo) {
         }
         return;
     }
+    if i.is_graphic && i.count == 1 {
+        image_actions(app, ui, hw);
+        return;
+    }
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
         let r = outline_button(ui, crate::i18n::tr(&app.ui.language, "Arrange"), hw);
@@ -1097,6 +1101,72 @@ fn quick_actions_object(app: &mut DesignApp, ui: &mut Ui, i: &SelInfo) {
         let r = outline_button(ui, crate::i18n::tr(&app.ui.language, "Convert Shape"), fw);
         convert_shape_menu(app, &r);
     }
+}
+
+/// Quick Actions for a placed image, as InDesign's: Import File (place another file in the
+/// frame), Embed, Edit Original (the linked file in its default application) and Reveal in
+/// Explorer / Finder (the folder it's in). Linked-file actions are greyed for an embedded image.
+fn image_actions(app: &mut DesignApp, ui: &mut Ui, hw: f32) {
+    let tr = |app: &DesignApp, s: &str| crate::i18n::tr(&app.ui.language, s).to_string();
+    let asset = app.session.active().and_then(|st| {
+        let g = st.selection.items.first().and_then(|id| st.doc.item(*id)).and_then(|it| it.graphic())?;
+        st.doc.assets.get(&g.asset).map(|a| (a.id, a.link.clone()))
+    });
+    let link = asset.as_ref().and_then(|(_, l)| l.clone()).filter(|l| !l.is_empty());
+    let reveal = if cfg!(target_os = "macos") {
+        "Reveal in Finder"
+    } else if cfg!(target_os = "windows") {
+        "Reveal in Explorer"
+    } else {
+        "Show in Folder"
+    };
+    let (import, embed, edit, show) = (tr(app, "Import File"), tr(app, "Embed"), tr(app, "Edit Original"), tr(app, reveal));
+    let mut clicked = [false; 4];
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 10.0;
+        clicked[0] = outline_button(ui, &import, hw).clicked();
+        clicked[1] = ui.add_enabled_ui(link.is_some(), |ui| outline_button(ui, &embed, hw)).inner.clicked();
+    });
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 10.0;
+        ui.add_enabled_ui(link.is_some(), |ui| {
+            clicked[2] = outline_button(ui, &edit, hw).clicked();
+            clicked[3] = outline_button(ui, &show, hw).clicked();
+        });
+    });
+    if clicked[0] {
+        // With the frame selected, the file placed replaces the image (File › Place).
+        if let Err(e) = app.pick_and_open("place") {
+            app.status(e);
+        }
+    }
+    if clicked[1]
+        && let Some((id, _)) = asset
+    {
+        let _ = app.run("links.embed", json!({"asset": id.0}));
+    }
+    if let Some(path) = link.filter(|_| clicked[2] || clicked[3]) {
+        let file = std::path::PathBuf::from(&path);
+        let target = if clicked[2] { file } else { file.parent().map(std::path::Path::to_path_buf).unwrap_or_default() };
+        app.ui.pending_urls.push(file_url(&target));
+    }
+}
+
+/// A `file://` URL for `path`, its separators as slashes and URL-special characters escaped.
+fn file_url(path: &std::path::Path) -> String {
+    let p = path.to_string_lossy().replace('\\', "/");
+    let mut out = String::from(if p.starts_with('/') { "file://" } else { "file:///" });
+    for c in p.chars() {
+        match c {
+            ' ' => out.push_str("%20"),
+            '#' => out.push_str("%23"),
+            '%' => out.push_str("%25"),
+            '?' => out.push_str("%3F"),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------- Text
@@ -3341,6 +3411,45 @@ mod tests {
         assert_eq!(items.len(), 1, "one shape left");
         let r = items[0].bounds();
         assert!((r.x0 - 200.0).abs() < 0.5 && (r.y1 - 200.0).abs() < 0.5 && (r.x1 - 300.0).abs() < 0.5, "{r:?}");
+    }
+
+    /// A placed image's Quick Actions, as InDesign's: Edit Original and Reveal open the linked file
+    /// and its folder; Embed embeds it, and the linked-file actions grey out.
+    #[test]
+    fn image_quick_actions_open_the_link_and_embed_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("my photo.png");
+        std::fs::write(&path, designcraft_render::Rendered { width: 4, height: 4, pixels: vec![200; 64] }.to_png()).unwrap();
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({})).unwrap();
+        let id = app.run("frame.create", json!({"rect": [72, 72, 272, 172]})).unwrap()["id"].as_u64().unwrap();
+        app.run("file.place", json!({"path": path.to_string_lossy(), "frame": id, "link": true})).unwrap();
+        app.run("selection.set", json!({"ids": [id]})).unwrap();
+        let mut h = panel(app);
+        let _ = h.get_by_label("Import File");
+        let reveal = if cfg!(target_os = "macos") {
+            "Reveal in Finder"
+        } else if cfg!(target_os = "windows") {
+            "Reveal in Explorer"
+        } else {
+            "Show in Folder"
+        };
+        h.get_by_label("Edit Original").click();
+        h.run_steps(2);
+        h.get_by_label(reveal).click();
+        h.run_steps(2);
+        let urls = h.state().ui.pending_urls.clone();
+        assert_eq!(urls.len(), 2, "{urls:?}");
+        assert!(urls[0].starts_with("file://") && urls[0].ends_with("my%20photo.png"), "the file: {urls:?}");
+        assert!(!urls[1].ends_with(".png") && !urls[1].contains('\\'), "its folder: {urls:?}");
+        // Embedded: no link left, and the linked-file actions grey out.
+        h.get_by_label("Embed").click();
+        h.run_steps(3);
+        let st = h.state().session.active().unwrap();
+        let g = st.doc.item(designcraft_doc::ids::ItemId(id)).unwrap().graphic().unwrap().clone();
+        assert!(st.doc.assets[&g.asset].link.is_none(), "embedded");
+        use egui_kittest::kittest::NodeT;
+        assert!(h.get_by_label("Edit Original").accesskit_node().is_disabled(), "nothing linked to edit");
     }
 
     const CYAN: &str = "C=100 M=0 Y=0 K=0";
