@@ -516,7 +516,10 @@ impl Session {
     }
     /// Close a document and cancel transient TOC placement state.
     pub fn close_document(&mut self, i: usize) {
-        if i < self.docs.len() && self.loaded_toc.is_some() {
+        // Only the document the loaded table of contents belongs to cancels it.
+        if let Some(d) = self.docs.get(i)
+            && self.loaded_toc.as_ref().is_some_and(|(uid, _)| *uid == d.uid)
+        {
             self.set_tool("selection");
         }
         if self.active == Some(i) {

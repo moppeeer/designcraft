@@ -696,6 +696,28 @@ mod tests {
 
     /// Loading is cancellable; dragging commits once, and a load never crosses documents.
     #[test]
+    fn closing_another_document_keeps_the_loaded_toc() {
+        let (mut s, page) = doc_with(&[("Chapter", "Head")]);
+        let options = json!({"styles": ["Head"], "page": page});
+        s.add_document(crate::DocState::new(designcraft_doc::Document::new(&designcraft_doc::build::NewDocument::default()), None));
+        s.set_active(0);
+        s.execute("toc.load", &options).unwrap();
+        // A background document closes: the cursor stays loaded and still places.
+        s.close_document(1);
+        assert_eq!(s.tool_id(), "tocPlace");
+        let undo = s.doc().unwrap().history.undo.len();
+        s.execute("toc.place", &json!({"x": 36, "y": 36})).unwrap();
+        assert!(s.doc().unwrap().doc.toc.is_some());
+        assert_eq!(s.doc().unwrap().history.undo.len(), undo + 1);
+        // Its own document closing cancels it.
+        s.execute("edit.undo", &json!({})).unwrap();
+        s.execute("toc.load", &options).unwrap();
+        s.close_document(0);
+        assert_eq!(s.tool_id(), "selection");
+        assert!(s.loaded_toc.is_none());
+    }
+
+    #[test]
     fn loaded_toc_places_once_and_escape_leaves_no_document_change() {
         use designcraft_tools::{Mods, PointerEvent, PointerKind, ToolKey};
         let (mut s, page) = doc_with(&[("Chapter", "Head")]);
