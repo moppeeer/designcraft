@@ -717,8 +717,9 @@ impl Tool for SelectionTool {
             return actions;
         }
         // The second press of a double click on a frame with content: toggle between the frame and
-        // its content.
+        // its content. Free Transform has no content handles, so it stays on the frame.
         if !self.direct
+            && !self.free
             && matches!(ev.kind, PointerKind::Down | PointerKind::DoubleClick)
             && ev.click_count() == 2
             && let Some(id) = cx.hit(p).map(|(_, id)| cx.doc.top_level_of(id).unwrap_or(id))

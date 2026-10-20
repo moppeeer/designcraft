@@ -1721,4 +1721,18 @@ fn free_transform_scales_with_contents_rotates_reflects_shears_and_moves() {
     assert!(near(corners(&s)[0], 100.0, 150.0), "{:?}", corners(&s));
     s.execute("edit.undo", &json!({})).unwrap();
     assert!(near(corners(&s)[0], 100.0, 100.0) && (item(&s).bounds().width() - 200.0).abs() < 1e-6, "every gesture undoes in one step");
+    // The picture selected (Direct Selection), then Free Transform: the frame's handles work.
+    s.set_tool("directSelection");
+    s.execute("selection.set", &json!({"ids": [f], "content": true})).unwrap();
+    s.set_tool("freeTransform");
+    assert!(!s.doc().unwrap().selection.content, "Free Transform works on the frame");
+    drag(&mut s, at(300.0, 200.0), at(400.0, 200.0), none);
+    assert!((item(&s).bounds().width() - 300.0).abs() < 1e-6, "{:?}", item(&s).bounds());
+    s.execute("edit.undo", &json!({})).unwrap();
+    // A double click on the frame keeps the frame selected.
+    s.pointer(&PointerEvent::new(PointerKind::Down, at(200.0, 200.0).x, at(200.0, 200.0).y), v).unwrap();
+    s.pointer(&PointerEvent::new(PointerKind::Up, at(200.0, 200.0).x, at(200.0, 200.0).y), v).unwrap();
+    s.pointer(&PointerEvent::new(PointerKind::Down, at(200.0, 200.0).x, at(200.0, 200.0).y).with_clicks(2), v).unwrap();
+    s.pointer(&PointerEvent::new(PointerKind::Up, at(200.0, 200.0).x, at(200.0, 200.0).y), v).unwrap();
+    assert!(!s.doc().unwrap().selection.content);
 }

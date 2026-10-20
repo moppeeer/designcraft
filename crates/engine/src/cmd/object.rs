@@ -1513,6 +1513,20 @@ fn apply_about_ref(s: &mut Session, p: &Value, a: Affine) -> Result<Value> {
     })
 }
 
+/// Applies `m` (spread coordinates) to each item, in its parent's space when it sits in a
+/// transformed group.
+fn apply_in_spread(d: &mut Document, ids: &[ItemId], m: Affine) {
+    for id in ids {
+        let parent = d.find(*id).map_or(Affine::IDENTITY, |l| d.parent_xf(&l));
+        if parent.determinant().abs() < 1e-12 {
+            continue;
+        }
+        if let Some(it) = d.item_mut(*id) {
+            it.xf = parent.inverse() * m * parent * it.xf;
+        }
+    }
+}
+
 fn transform_rotate(s: &mut Session, p: &Value) -> Result<Value> {
     let a = f64_or(p, "angle", 0.0);
     apply_about_ref(s, p, Affine::rotate(-a.to_radians()))
@@ -5588,11 +5602,42 @@ fn apply_about(s: &mut Session, p: &Value, origin: Point, a: Affine) -> Result<V
     let ids = targets(s, p)?;
     let m = Affine::translate(origin.to_vec2()) * a * Affine::translate(-origin.to_vec2());
     s.edit(|d, _| {
-        for id in &ids {
-            if let Some(it) = d.item_mut(*id) {
-                it.xf = m * it.xf;
-            }
-        }
+        apply_in_spread(d, &ids, m);
         ok()
     })
+}
+
+#[cfg(test)]
+mod shear_origin_tests {
+    use designcraft_doc::ItemId;
+    use designcraft_geom::{Affine, Point};
+    use serde_json::json;
+
+    #[test]
+    fn a_shear_about_an_origin_holds_that_point_inside_a_rotated_group() {
+        let mut s = crate::Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let a = s.execute("frame.create", &json!({"rect": [100, 100, 200, 150]})).unwrap()["id"].as_u64().unwrap();
+        let b = s.execute("frame.create", &json!({"rect": [250, 100, 300, 150]})).unwrap()["id"].as_u64().unwrap();
+        let g = s.execute("object.group", &json!({"ids": [a, b]})).unwrap()["id"].as_u64().unwrap();
+        s.execute("transform.rotate", &json!({"ids": [g], "angle": 90})).unwrap();
+        let full = |s: &crate::Session| {
+            let d = &s.doc().unwrap().doc;
+            d.parent_xf(&d.find(ItemId(a)).unwrap()) * d.item(ItemId(a)).unwrap().xf
+        };
+        let before = full(&s);
+        assert!(before.as_coeffs()[1].abs() > 0.5, "the group turns the frame: {before:?}");
+        // The point that stays, and another, in spread coordinates.
+        let origin = before * Point::new(100.0, 150.0);
+        let other = before * Point::new(200.0, 100.0);
+        s.execute("transform.shear", &json!({"ids": [a], "angle": 20, "origin": [origin.x, origin.y]})).unwrap();
+        let after = full(&s);
+        let local = |xf: Affine, p: Point| xf.inverse() * p;
+        assert!((after * local(before, origin) - origin).hypot() < 1e-6, "the origin stays where it was");
+        let moved = after * local(before, other);
+        assert!(
+            (moved.y - other.y).abs() < 1e-6 && (moved.x - other.x).abs() > 1.0,
+            "a horizontal shear slides points sideways on the spread: {other:?} → {moved:?}"
+        );
+    }
 }
