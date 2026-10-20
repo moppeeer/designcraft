@@ -315,8 +315,41 @@ fn services() -> Services {
         read: Some(Box::new(|p: &str| std::fs::read(p).map_err(|e| e.to_string()))),
         write: Some(Box::new(|p: &str, b: &[u8]| designcraft_engine::atomic::write_atomic(std::path::Path::new(p), b).map_err(|e| e.to_string()))),
         clipboard_text: Some(Box::new(|| arboard::Clipboard::new().and_then(|mut c| c.get_text()).ok())),
+        open_path: Some(Box::new(open_path)),
         ..Default::default()
     }
+}
+
+/// Open `path` in its default application, or with `reveal` show it in the file manager, with
+/// the system's own opener (a browser would show an image instead of opening its editor).
+fn open_path(path: &std::path::Path, reveal: bool) -> Result<(), String> {
+    let mut cmd;
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd = std::process::Command::new("explorer");
+        if reveal {
+            // Explorer reads `/select,` and the quoted path as one raw argument.
+            cmd.raw_arg(format!("/select,\"{}\"", path.display()));
+        } else {
+            cmd.arg(path);
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        cmd = std::process::Command::new("open");
+        if reveal {
+            cmd.arg("-R");
+        }
+        cmd.arg(path);
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        cmd = std::process::Command::new("xdg-open");
+        // No portable way to select the file: its folder opens.
+        cmd.arg(if reveal { path.parent().unwrap_or(path) } else { path });
+    }
+    cmd.spawn().map(drop).map_err(|e| format!("couldn't open {}: {e}", path.display()))
 }
 
 /// Desktop app ID: the Linux `.desktop` file name and hicolor icon name (Wayland matches windows by it).

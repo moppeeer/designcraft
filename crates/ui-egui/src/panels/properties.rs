@@ -1148,8 +1148,20 @@ fn image_actions(app: &mut DesignApp, ui: &mut Ui, hw: f32) {
     }
     if let Some(path) = link.filter(|_| clicked[2] || clicked[3]) {
         let file = std::path::PathBuf::from(&path);
-        let target = if clicked[2] { file } else { file.parent().map(std::path::Path::to_path_buf).unwrap_or_default() };
-        app.ui.pending_urls.push(file_url(&target));
+        let reveal = clicked[3];
+        match app.services.open_path.as_mut() {
+            // The system's opener: the file in its application, or selected in the file manager.
+            Some(open) => {
+                if let Err(e) = open(&file, reveal) {
+                    app.status(e);
+                }
+            }
+            // No opener (the web build): the file's URL, or its folder's.
+            None => {
+                let target = if reveal { file.parent().map(std::path::Path::to_path_buf).unwrap_or_default() } else { file };
+                app.ui.pending_urls.push(file_url(&target));
+            }
+        }
     }
 }
 
@@ -3420,7 +3432,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("my photo.png");
         std::fs::write(&path, designcraft_render::Rendered { width: 4, height: 4, pixels: vec![200; 64] }.to_png()).unwrap();
-        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        // The system opener, recording what it was asked to open.
+        let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let log = opened.clone();
+        let services = crate::Services {
+            open_path: Some(Box::new(move |p: &std::path::Path, reveal: bool| {
+                log.borrow_mut().push((p.to_path_buf(), reveal));
+                Ok(())
+            })),
+            ..Default::default()
+        };
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), services);
         app.run("file.new", json!({})).unwrap();
         let id = app.run("frame.create", json!({"rect": [72, 72, 272, 172]})).unwrap()["id"].as_u64().unwrap();
         app.run("file.place", json!({"path": path.to_string_lossy(), "frame": id, "link": true})).unwrap();
@@ -3438,10 +3460,9 @@ mod tests {
         h.run_steps(2);
         h.get_by_label(reveal).click();
         h.run_steps(2);
-        let urls = h.state().ui.pending_urls.clone();
-        assert_eq!(urls.len(), 2, "{urls:?}");
-        assert!(urls[0].starts_with("file://") && urls[0].ends_with("my%20photo.png"), "the file: {urls:?}");
-        assert!(!urls[1].ends_with(".png") && !urls[1].contains('\\'), "its folder: {urls:?}");
+        // The file itself, opened, then revealed in the file manager; no browser URL.
+        assert_eq!(*opened.borrow(), [(path.clone(), false), (path.clone(), true)]);
+        assert!(h.state().ui.pending_urls.is_empty());
         // Embedded: no link left, and the linked-file actions grey out.
         h.get_by_label("Embed").click();
         h.run_steps(3);
@@ -3450,6 +3471,15 @@ mod tests {
         assert!(st.doc.assets[&g.asset].link.is_none(), "embedded");
         use egui_kittest::kittest::NodeT;
         assert!(h.get_by_label("Edit Original").accesskit_node().is_disabled(), "nothing linked to edit");
+    }
+
+    /// Without a system opener (the web build), the file's URL: separators as slashes, spaces
+    /// escaped.
+    #[test]
+    fn a_linked_file_url_escapes_its_path() {
+        let url = file_url(std::path::Path::new("C:\\Docs\\my photo#1.png"));
+        assert_eq!(url, "file:///C:/Docs/my%20photo%231.png");
+        assert_eq!(file_url(std::path::Path::new("/home/a b.png")), "file:///home/a%20b.png");
     }
 
     const CYAN: &str = "C=100 M=0 Y=0 K=0";

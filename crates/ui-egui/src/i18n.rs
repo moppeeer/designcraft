@@ -89,10 +89,13 @@ const TABLE: &[(&str, [&str; 5])] = &[
     ("Cut", ["Ausschneiden", "Couper", "Cortar", "カット", "剪切"]),
     ("Copy", ["Kopieren", "Copier", "Copiar", "コピー", "复制"]),
     ("Paste", ["Einfügen", "Coller", "Pegar", "ペースト", "粘贴"]),
-    ("Edit Original", ["Edit Original", "Modifier l'original", "Edit Original", "Edit Original", "编辑原稿"]),
-    ("Reveal in Explorer", ["Reveal in Explorer", "Afficher dans l'Explorateur", "Reveal in Explorer", "Reveal in Explorer", "在资源管理器中显示"]),
-    ("Reveal in Finder", ["Reveal in Finder", "Afficher dans le Finder", "Reveal in Finder", "Reveal in Finder", "在 Finder 中显示"]),
-    ("Show in Folder", ["Show in Folder", "Afficher dans le dossier", "Show in Folder", "Show in Folder", "在文件夹中显示"]),
+    ("Edit Original", ["Edit Original", "Modifier l'original", "Editar original", "Edit Original", "编辑原稿"]),
+    (
+        "Reveal in Explorer",
+        ["Reveal in Explorer", "Afficher dans l'Explorateur", "Mostrar en el Explorador", "Reveal in Explorer", "在资源管理器中显示"],
+    ),
+    ("Reveal in Finder", ["Reveal in Finder", "Afficher dans le Finder", "Mostrar en el Finder", "Reveal in Finder", "在 Finder 中显示"]),
+    ("Show in Folder", ["Show in Folder", "Afficher dans le dossier", "Mostrar en la carpeta", "Show in Folder", "在文件夹中显示"]),
     ("Hide Rulers", ["Lineale ausblenden", "Masquer les règles", "Ocultar reglas", "定規を隠す", "隐藏标尺"]),
     ("Inches Decimal", ["Zoll dezimal", "Pouces décimaux", "Pulgadas decimales", "インチ（10 進）", "十进制英寸"]),
     (
