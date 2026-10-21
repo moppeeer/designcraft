@@ -1161,3 +1161,29 @@ fn pages_keeps_its_panel_menu_in_the_docking_layout() {
     assert!(h.query_by_label("Close Panel").is_none());
     assert!(h.query_by_label("Panel Options…").is_none(), "the panel's own commands stay in its panel menu");
 }
+
+/// Properties' Styles buttons open the panel as Window › Paragraph Styles does: a docked
+/// Paragraph Styles panel is brought forward, with no stale flyout left behind.
+#[test]
+fn properties_styles_button_raises_a_docked_styles_panel() {
+    let mut app = app();
+    app.run("file.new", json!({"width":480,"height":360})).unwrap();
+    let f = app.run("frame.create", json!({"rect":[80,70,330,230],"content":"text","text":"Recipe"})).unwrap();
+    app.run("text.select", json!({"story": f["story"], "anchor": 0, "focus": 6})).unwrap();
+    app.run("window.panel.float", json!({"panel":"layers"})).unwrap();
+    app.run("window.panel.dock", json!({"panel":"paragraphStyles"})).unwrap();
+    app.run("window.panel", json!({"panel":"properties"})).unwrap();
+    assert!(app.ui.docking.as_ref().unwrap().contains(&"paragraphStyles".into()));
+    let mut h = Harness::builder().with_size(vec2(1280.0, 900.0)).build_ui_state(
+        |ui, app: &mut DesignApp| {
+            app.logic(ui.ctx());
+            app.ui(ui);
+        },
+        app,
+    );
+    h.run_steps(5);
+    h.get_by_label("Paragraph Styles panel").click();
+    h.run_steps(3);
+    assert_eq!(h.state().ui.open_panel, None, "no flyout for a docked panel");
+    assert_eq!(h.state().ui.docking_opened.as_deref(), Some("paragraphStyles"));
+}
