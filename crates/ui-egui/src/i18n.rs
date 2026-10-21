@@ -3663,6 +3663,19 @@ const TABLE: &[(&str, [&str; 5])] = &[
     ("unused", ["unused", "inutilisé", "unused", "unused", "未使用"]),
     ("⚠ Missing", ["⚠ Missing", "⚠ Manquant", "⚠ Missing", "⚠ Missing", "⚠ 缺失"]),
     ("▲ Modified", ["▲ Modified", "▲ Modifié", "▲ Modified", "▲ Modified", "▲ 已修改"]),
+    // The Links panel's status labels (tooltip, Link Info).
+    ("Missing", ["Fehlt", "Manquant", "Falta", "リンク切れ", "缺失"]),
+    ("Modified", ["Geändert", "Modifié", "Modificado", "変更済み", "已修改"]),
+    (
+        "Too large to check",
+        [
+            "Zu groß zum Prüfen",
+            "Trop volumineux pour être vérifié",
+            "Demasiado grande para comprobarlo",
+            "大きすぎて確認できません",
+            "太大，无法检查",
+        ],
+    ),
     ("(Text Color)", ["(Text Color)", "(Couleur du texte)", "(Text Color)", "(Text Color)", "（文本颜色）"]),
     (
         "{count} glyphs — click to insert at the text cursor",

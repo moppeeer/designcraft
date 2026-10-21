@@ -57,7 +57,7 @@ basics of editing fail for too many users on Windows and Linux.
 | UI scaling, System appearance | ✓ | scaling ✓ (#281); follows macOS light/dark ✗ (#237) | ~ | |
 | Window controls, full screen | ✓ | ~ | ~ | misaligned on macOS (#333) |
 
-Counted 2026-10-11: 28 rows, 12 ✓, 14 ~, 2 ✗ → **68% presence**, scoring ✓ = 1, ~ = 0.5. Ready
+Counted 2026-10-21: 30 rows, 14 ✓, 15 ~, 1 ✗ → **72% presence**, scoring ✓ = 1, ~ = 0.5. Ready
 for real work is lower, ~45%, because threading is missing and three of the ~ rows (copy/paste,
 context menus, typing at a caret) are things a layout artist does every minute, and their failures stop work.
 
@@ -123,6 +123,7 @@ covers checking the sampled and redefined settings in the styles tutorial (2:45 
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-21 | minor | Added the Links panel row (~: InDesign's layout, no CC Libraries relink or Edit Original); recounted the checklist |
 | 2026-10-11 | minor | Live corners row to ✓: widget, diamonds, drag, Shift-drag, Alt-click shape cycling (#186) |
 | 2026-10-11 | minor | Added held Cmd+Space / Cmd+Alt+Space Zoom navigation and canvas input regression tests |
 | 2026-10-10 | minor | Threading row corrected to ✗ after checking the code (no out-port interaction, no thread command) |
