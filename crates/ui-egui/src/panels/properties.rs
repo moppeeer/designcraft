@@ -1147,7 +1147,16 @@ fn image_actions(app: &mut DesignApp, ui: &mut Ui, hw: f32) {
         let _ = app.run("links.embed", json!({"asset": id.0}));
     }
     if let Some(path) = link.filter(|_| clicked[2] || clicked[3]) {
-        let file = std::path::PathBuf::from(&path);
+        // A relative link belongs to the document: resolved against its folder, not the app's
+        // working directory. A link that can't be followed (another computer, a device) says so.
+        let document = app.session.active().and_then(|st| st.path.clone());
+        let file = match designcraft_engine::io::document_path(&path, document.as_deref().map(std::path::Path::new)) {
+            Ok(file) => file,
+            Err(e) => {
+                app.status(e.to_string());
+                return;
+            }
+        };
         let reveal = clicked[3];
         match app.services.open_path.as_mut() {
             // The system's opener: the file in its application, or selected in the file manager.
@@ -3471,6 +3480,40 @@ mod tests {
         assert!(st.doc.assets[&g.asset].link.is_none(), "embedded");
         use egui_kittest::kittest::NodeT;
         assert!(h.get_by_label("Edit Original").accesskit_node().is_disabled(), "nothing linked to edit");
+    }
+
+    /// A relative link opens the file beside the document, wherever the app was started from.
+    #[test]
+    fn image_quick_actions_resolve_a_relative_link_against_the_document() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("pics")).unwrap();
+        let path = dir.path().join("pics").join("photo.png");
+        std::fs::write(&path, designcraft_render::Rendered { width: 4, height: 4, pixels: vec![200; 64] }.to_png()).unwrap();
+        let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let log = opened.clone();
+        let services = crate::Services {
+            open_path: Some(Box::new(move |p: &std::path::Path, reveal: bool| {
+                log.borrow_mut().push((p.to_path_buf(), reveal));
+                Ok(())
+            })),
+            ..Default::default()
+        };
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), services);
+        app.run("file.new", json!({})).unwrap();
+        let id = app.run("frame.create", json!({"rect": [72, 72, 272, 172]})).unwrap()["id"].as_u64().unwrap();
+        app.run("file.place", json!({"path": path.to_string_lossy(), "frame": id, "link": true})).unwrap();
+        app.run("file.saveAs", json!({"path": dir.path().join("doc.designcraft").to_string_lossy()})).unwrap();
+        // The link stored relative to the document, as a moved project keeps it.
+        let st = app.session.doc_mut().unwrap();
+        let doc = std::sync::Arc::make_mut(&mut st.doc);
+        let aid = doc.item(designcraft_doc::ids::ItemId(id)).unwrap().graphic().unwrap().asset;
+        std::sync::Arc::make_mut(doc.assets.get_mut(&aid).unwrap()).link = Some("pics/photo.png".into());
+        app.run("selection.set", json!({"ids": [id]})).unwrap();
+        let mut h = panel(app);
+        h.get_by_label("Edit Original").click();
+        h.run_steps(2);
+        let got = opened.borrow().first().cloned().expect("the opener was asked");
+        assert_eq!(got.0, path, "the file beside the document: {:?}", got.0);
     }
 
     /// Without a system opener (the web build), the file's URL: separators as slashes, spaces
