@@ -528,6 +528,15 @@ pub(super) fn place_text(
         };
         if opts.bullets_to_text {
             lists_to_text(d, sid, inserted);
+            // The link's record of the story is of the text as placed, list labels included.
+            if let Some(st) = d.story_mut(sid)
+                && st.file_link.is_some()
+            {
+                let hash = super::links::story_hash(st);
+                if let Some(l) = st.file_link.as_mut() {
+                    l.story_hash = hash;
+                }
+            }
         }
         let pages = if autoflow_on { autoflow(d, sid, 2000, "file.place", false)? } else { 0 };
         let overset = fit(d, sid).0.is_some();
@@ -603,6 +612,25 @@ mod tests {
         let st = s.doc().unwrap().doc.story(sid).unwrap().clone();
         assert_eq!(st.text, "One\nTwo\nNew");
         assert!(st.paras[..2].iter().all(|p| p.para.list_type == Some(designcraft_doc::ListType::Numbers)), "{:?}", st.paras);
+    }
+
+    /// A linked file placed with Convert Bullets & Numbers to Text isn't reported as edited in the
+    /// layout: the link records the text with its labels.
+    #[test]
+    fn bullets_to_text_keeps_a_new_link_unedited() {
+        let dir = std::env::temp_dir().join(format!("dc-word-lists-link-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("steps.txt");
+        std::fs::write(&path, "Mix\nBake").unwrap();
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        s.execute("style.paragraph.edit", &json!({"name": "[Basic Paragraph]", "para": {"listType": "numbers"}})).unwrap();
+        let r = s.execute("file.place", &json!({"path": path.to_string_lossy(), "link": true, "word": {"bulletsToText": true}})).unwrap();
+        let st = s.doc().unwrap().doc.story(StoryId(r["story"].as_u64().unwrap())).unwrap().clone();
+        assert!(st.text.starts_with("1."), "{:?}", st.text);
+        let rows = s.execute("links.list", &json!({})).unwrap();
+        let row = rows.as_array().unwrap().iter().find(|r| r["story"].is_u64()).unwrap().clone();
+        assert_eq!(row["edited"], false, "{row}");
     }
 
     #[test]
