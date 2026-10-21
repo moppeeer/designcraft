@@ -39,6 +39,12 @@ pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
         None,
         "{page?: transparency|dropShadow|innerShadow|outerGlow|innerGlow|bevel|satin|feather|directionalFeather|gradientFeather} — the Effects dialog for the selected objects",
     ),
+    (
+        "objectStyle.dialog",
+        "Object Style…",
+        None,
+        "{name?: style} — Object Style Options for the style `name`, or (without it) New Object Style from the selected object",
+    ),
     ("app.packageDialog", "Package…", Some("Cmd+Alt+Shift+P"), "{} — choose the package folder to create (file.package)"),
     ("app.saveSwatches", "Save Swatches for Exchange…", None, "{path?} — write the colour swatches as .ase"),
     ("app.exportPng", "Export Page as PNG…", Some("Cmd+E"), "{}"),
@@ -878,6 +884,7 @@ pub const MENUS: &[(&str, &[&str])] = &[
             "ui:window.panel|Stroke|{\"panel\": \"stroke\"}",
             ">Styles",
             "ui:window.panel|Character Styles|{\"panel\": \"characterStyles\"}",
+            "ui:window.panel|Object Styles|{\"panel\": \"objectStyles\"}",
             "ui:window.panel|Paragraph Styles|{\"panel\": \"paragraphStyles\"}",
             "<",
             "ui:window.panel|Text Wrap|{\"panel\": \"textWrap\"}",
@@ -1186,6 +1193,13 @@ fn run_ui_inner(app: &mut DesignApp, id: &str, p: &Value) -> Option<Result<Value
         }
         "effects.dialog" => {
             crate::effects_dialog::open(app, p.get("page").and_then(Value::as_str).unwrap_or("transparency"));
+            Ok(Value::Null)
+        }
+        "objectStyle.dialog" => {
+            match p.get("name").and_then(Value::as_str) {
+                Some(n) => crate::object_style_dialog::open_edit(app, n),
+                None => crate::object_style_dialog::open_new(app),
+            }
             Ok(Value::Null)
         }
         "app.loadSwatches" => {
