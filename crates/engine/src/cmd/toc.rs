@@ -24,7 +24,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Place Table of Contents",
             [],
             None,
-            "{spread?: 0, x?, y?, rect?: [x0,y0,x1,y1]} — place the loaded TOC in one undo step",
+            "{spread?: 0, x?, y?, rect?: [x0,y0,x1,y1]} — place the loaded TOC in one undo step; the frame is cut at the edge of the page (x, y) is on",
             has_doc,
             place
         ),
@@ -111,6 +111,12 @@ fn place(s: &mut Session, p: &Value) -> Result<Value> {
         Some(r) if r.width() > 2.0 && r.height() > 2.0 => r,
         _ => Rect::new(x, y, margin.x1.max(x + 12.0), margin.y1.max(y + 12.0)),
     };
+    // The frame stays on the page the placement started on: a drag that runs off it, or a
+    // click near its edge, is cut at the page's edge.
+    let rect = rect.intersect(page.bounds());
+    if !(rect.width() >= 1.0 && rect.height() >= 1.0) {
+        return Err(bad("toc.place", "the table of contents' frame must be on the page"));
+    }
     params["page"] = json!(d.first_page_of_spread(si) + pi + 1);
     params["rect"] = json!([rect.x0, rect.y0, rect.x1, rect.y1]);
     let result = generate(s, &params)?;
@@ -767,6 +773,18 @@ mod tests {
             assert_eq!(s.tool_id(), "tocPlace");
         }
         assert!(s.execute("toc.place", &json!({"rect": [0, 0, -1, 20]})).is_err());
+        // A drag off the page, and a click near its corner, stay on the page.
+        let bounds = s.doc().unwrap().doc.spreads[0].pages[0].bounds();
+        for params in
+            [json!({"x": 36, "y": 36, "rect": [36, 36, bounds.x1 + 500.0, bounds.y1 + 500.0]}), json!({"x": bounds.x1 - 5.0, "y": bounds.y1 - 5.0})]
+        {
+            s.execute("toc.place", &params).unwrap();
+            let d = &s.doc().unwrap().doc;
+            let frame = d.item(d.story(d.toc.as_ref().unwrap().story).unwrap().frames[0]).unwrap().bounds();
+            assert!(bounds.contains_rect(frame), "{params}: {frame:?} on {bounds:?}");
+            s.execute("edit.undo", &json!({})).unwrap();
+            s.execute("toc.load", &options).unwrap();
+        }
         assert!(s.doc().unwrap().doc.toc.is_none());
         assert_eq!(s.tool_id(), "tocPlace", "a rejected placement keeps the load");
         s.execute("layout.parents.edit", &json!({"on": true})).unwrap();
