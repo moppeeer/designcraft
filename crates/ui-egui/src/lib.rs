@@ -1037,7 +1037,8 @@ impl DesignApp {
     /// the files were chosen (images in a row load together, before the file after them).
     fn place_paths(&mut self, paths: Vec<String>) {
         let mut images = Vec::new();
-        let mut loaded = false;
+        // Images already in the place cursor stay: the batch queues after them.
+        let mut loaded = self.session.loaded.is_some();
         // `None` at the end loads the images left.
         for path in paths.into_iter().map(Some).chain([None]) {
             if let Some(p) = &path
@@ -3017,10 +3018,15 @@ mod browser_import_tests {
         let mut app = app();
         app.services.read = Some(Box::new(|p| std::fs::read(p).map_err(|e| e.to_string())));
         app.place_paths(vec![path("a.svg"), path("one.pdf"), path("b.svg")]);
-        let st = app.session.doc().unwrap();
-        let name = |a: designcraft_doc::AssetId| st.doc.assets[&a].name.clone();
-        let order: Vec<String> = app.session.loaded.iter().chain(app.session.loaded_queue.iter()).map(|g| name(g.asset)).collect();
-        assert_eq!(order, ["a.svg", "one.pdf", "b.svg"]);
+        let order = |app: &DesignApp| {
+            let st = app.session.doc().unwrap();
+            app.session.loaded.iter().chain(app.session.loaded_queue.iter()).map(|g| st.doc.assets[&g.asset].name.clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(order(&app), ["a.svg", "one.pdf", "b.svg"]);
+        // A second batch queues after what the cursor still holds.
+        std::fs::write(path("c.svg"), image()).unwrap();
+        app.place_paths(vec![path("c.svg"), path("a.svg")]);
+        assert_eq!(order(&app), ["a.svg", "one.pdf", "b.svg", "c.svg", "a.svg"]);
     }
 
     #[test]
