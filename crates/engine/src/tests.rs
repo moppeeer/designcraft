@@ -725,6 +725,13 @@ fn object_styles_carry_corners_and_their_stroke_and_corners_can_be_edited() {
     assert!(s.execute("style.object.edit", &json!({"name": "Framed", "rename": "[Basic Text Frame]"})).is_err());
     assert!(s.execute("style.object.edit", &json!({"name": "[Basic Graphics Frame]", "rename": "Mine"})).is_err());
     assert!(s.execute("style.object.edit", &json!({"name": "Framed", "corners": {"size": "big"}})).is_err());
+    // A negative stroke weight is refused when creating a style as when editing one.
+    let styles = s.doc().unwrap().doc.styles.object.len();
+    for cmd in ["style.object.create", "style.object.edit"] {
+        let e = s.execute(cmd, &json!({"name": "Framed", "stroke": {"weight": -3}})).unwrap_err();
+        assert!(e.to_string().contains("stroke weight"), "{cmd}: {e}");
+    }
+    assert_eq!(s.doc().unwrap().doc.styles.object.len(), styles);
     // null: the style stops setting corners, the items keep theirs.
     s.execute("style.object.edit", &json!({"name": "Framed", "corners": null})).unwrap();
     assert!(s.doc().unwrap().doc.styles.object_style("Framed").unwrap().corners.is_none());

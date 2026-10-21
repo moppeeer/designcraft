@@ -1515,7 +1515,7 @@ fn create_object(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(f) = fill_param(CREATE, p, os.fill.as_ref())? {
         os.fill = f;
     }
-    if let Some(st) = group_param(CREATE, p, "stroke", os.stroke.as_ref().unwrap_or(&designcraft_doc::Stroke::default()))? {
+    if let Some(st) = stroke_param(CREATE, p, os.stroke.as_ref())? {
         os.stroke = st;
     }
     if let Some(c) = corners_param(CREATE, p, os.corners.unwrap_or_default())? {
@@ -1533,6 +1533,18 @@ fn create_object(s: &mut Session, p: &Value) -> Result<Value> {
         d.styles_mut().object.push(os.clone());
         Ok(json!({"name": name}))
     })
+}
+
+/// `p.stroke` merged over `base` (as [`group_param`]), refused when the weight isn't a number ≥ 0
+/// or the tint isn't finite.
+fn stroke_param(cmd: &str, p: &Value, base: Option<&designcraft_doc::Stroke>) -> Result<Option<Option<designcraft_doc::Stroke>>> {
+    let st = group_param(cmd, p, "stroke", base.unwrap_or(&designcraft_doc::Stroke::default()))?;
+    if let Some(Some(st)) = &st
+        && !(st.weight.is_finite() && st.weight >= 0.0 && st.tint.is_finite())
+    {
+        return Err(bad(cmd, "stroke weight must be a number ≥ 0"));
+    }
+    Ok(st)
 }
 
 /// `p[key]`, an attribute group of a style, merged field by field over `base`: `None` when not
@@ -1616,12 +1628,7 @@ fn edit_object(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(f) = fill_param(CMD, p, old.fill.as_ref())? {
         new.fill = f;
     }
-    if let Some(st) = group_param(CMD, p, "stroke", old.stroke.as_ref().unwrap_or(&designcraft_doc::Stroke::default()))? {
-        if let Some(st) = &st
-            && !(st.weight.is_finite() && st.weight >= 0.0 && st.tint.is_finite())
-        {
-            return Err(bad(CMD, "stroke weight must be a number ≥ 0"));
-        }
+    if let Some(st) = stroke_param(CMD, p, old.stroke.as_ref())? {
         new.stroke = st;
     }
     if let Some(c) = corners_param(CMD, p, old.corners.unwrap_or_default())? {
