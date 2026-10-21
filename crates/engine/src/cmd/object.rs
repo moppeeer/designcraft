@@ -3103,15 +3103,19 @@ fn align(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn distribute(s: &mut Session, p: &Value) -> Result<Value> {
     let ids = targets(s, p)?;
-    if ids.len() < 3 && p.get("spacing").is_none() {
+    // `spacing` is a number of points for both modes; anything else is an error, not "even".
+    let fixed = match p.get("spacing") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(v.as_f64().filter(|v| v.is_finite()).ok_or_else(|| bad("object.distribute", "spacing must be a finite number"))?),
+    };
+    if ids.len() < 3 && fixed.is_none() {
         return Err(bad("object.distribute", "select at least three objects"));
     }
     if let Some(edge) = str_param(p, "edge") {
-        return distribute_by_edge(s, &ids, edge, p.get("spacing").and_then(Value::as_f64));
+        return distribute_by_edge(s, &ids, edge, fixed);
     }
     let horizontal = str_param(p, "axis") != Some("vertical");
-    let by_spacing = str_param(p, "by") == Some("spacing") || p.get("spacing").is_some();
-    let fixed = p.get("spacing").and_then(Value::as_f64);
+    let by_spacing = str_param(p, "by") == Some("spacing") || fixed.is_some();
     s.edit(|d, _| {
         let mut items: Vec<(ItemId, Rect)> = ids.iter().filter_map(|i| d.item(*i).map(|it| (*i, it.bounds()))).collect();
         let key = |r: &Rect| if horizontal { r.x0 } else { r.y0 };
@@ -3169,9 +3173,6 @@ fn distribute_by_edge(s: &mut Session, ids: &[ItemId], edge: &str, spacing: Opti
         "bottom" => (false, 1.0),
         other => return Err(bad(ID, format!("unknown edge `{other}`"))),
     };
-    if spacing.is_some_and(|v| !v.is_finite()) {
-        return Err(bad(ID, "spacing must be a finite number"));
-    }
     s.edit(|d, _| {
         let line = |r: &Rect| if horizontal { r.x0 + (r.x1 - r.x0) * at } else { r.y0 + (r.y1 - r.y0) * at };
         let mut items: Vec<(ItemId, f64)> = ids.iter().filter_map(|i| d.item(*i).map(|it| (*i, line(&it.bounds())))).collect();
@@ -3714,6 +3715,14 @@ mod step_repeat_tests {
         s.execute("object.distribute", &json!({"edge": "top", "spacing": 50, "ids": [ids[0], ids[1]]})).unwrap();
         assert_eq!(top(&s, ids[1]) - top(&s, ids[0]), 50.0, "Use Spacing: two objects, 50 pt apart");
         assert!(s.execute("object.distribute", &json!({"edge": "middle", "ids": ids})).is_err());
+        let before = s.doc().unwrap().doc.clone();
+        for spacing in [json!("50"), json!(true), json!([1])] {
+            for edge in [json!("top"), Value::Null] {
+                let e = s.execute("object.distribute", &json!({"edge": edge, "spacing": spacing, "ids": ids})).unwrap_err();
+                assert!(e.to_string().contains("spacing must be a finite number"), "{e}");
+            }
+        }
+        assert!(std::sync::Arc::ptr_eq(&before, &s.doc().unwrap().doc), "nothing moved");
     }
 
     /// With nothing selected, fill and stroke set the colours new shapes are drawn with, as
