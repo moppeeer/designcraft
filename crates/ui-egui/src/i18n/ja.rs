@@ -1224,7 +1224,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Variable Font", "バリアブルフォント"),
     ("Welcome to DesignCraft", "DesignCraft へようこそ"),
     ("When Scaling", "拡大・縮小時"),
-    ("[Basic] (working) ▾", "[基本] (作業中) ▾"),
     ("[Black] Overprint", "「黒」のオーバープリント"),
     ("[No Group]", "[グループなし]"),
     ("[None]", "[なし]"),

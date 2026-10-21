@@ -967,7 +967,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Variable Font", "Czcionka zmienna"),
     ("Welcome to DesignCraft", "Witaj w DesignCraft"),
     ("When Scaling", "Przy skalowaniu"),
-    ("[Basic] (working) ▾", "[Podstawowy] (roboczy) ▾"),
+    ("[Basic] (working)", "[Podstawowy] (roboczy)"),
     ("[Black] Overprint", "Nadruk [czerni]"),
     ("[No Group]", "[Bez grupy]"),
     ("[None]", "[Brak]"),

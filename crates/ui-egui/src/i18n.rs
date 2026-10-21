@@ -2865,7 +2865,6 @@ const TABLE: &[(&str, [&str; 5])] = &[
         ["Welcome to DesignCraft", "Bienvenue dans DesignCraft", "Welcome to DesignCraft", "Welcome to DesignCraft", "欢迎使用 DesignCraft"],
     ),
     ("When Scaling", ["When Scaling", "Lors du redimensionnement", "When Scaling", "When Scaling", "缩放时"]),
-    ("[Basic] (working) ▾", ["[Basic] (working) ▾", "[De base] (de travail) ▾", "[Basic] (working) ▾", "[Basic] (working) ▾", "[基本] (工作区) ▾"]),
     ("[Black] Overprint", ["[Black] Overprint", "Surimpression de [Noir]", "[Black] Overprint", "[Black] Overprint", "[黑] 叠印"]),
     ("[No Group]", ["[No Group]", "[Aucun groupe]", "[No Group]", "[No Group]", "[无组]"]),
     ("[None]", ["[None]", "[Aucun]", "[None]", "[None]", "[无]"]),

@@ -1222,7 +1222,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Web Hyperlink", "Hiperlink da web"),
     ("When Scaling", "Ao dimensionar"),
     ("Words, one per line:", "Palavras, uma por linha:"),
-    ("[Basic] (working) ▾", "[Básico] (em uso) ▾"),
+    ("[Basic] (working)", "[Básico] (em uso)"),
     ("[Black] Overprint", "Sobreimpressão do [Preto]"),
     ("[No Group]", "[Sem grupo]"),
     ("[None] — choose a colour on the ramp.", "[Nenhum] — escolha uma cor na rampa."),

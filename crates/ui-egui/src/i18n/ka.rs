@@ -1025,7 +1025,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Variable Font", "ცვლადი შრიფტი"),
     ("Welcome to DesignCraft", "მოგესალმებათ DesignCraft"),
     ("When Scaling", "მასშტაბირებისას"),
-    ("[Basic] (working) ▾", "[საბაზო] (სამუშაო) ▾"),
+    ("[Basic] (working)", "[საბაზო] (სამუშაო)"),
     ("[Black] Overprint", "[შავი] — ზედდაბეჭდვა"),
     ("[No Group]", "[ჯგუფის გარეშე]"),
     ("[None]", "[არცერთი]"),

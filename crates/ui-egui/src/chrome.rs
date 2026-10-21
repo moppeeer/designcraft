@@ -799,7 +799,10 @@ pub fn status_bar(app: &mut DesignApp, ui: &mut egui::Ui) {
                     crate::canvas::go_to_page(app, n - 1);
                 }
                 ui.add_space(12.0);
-                crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "[Basic] (working) ▾")).font(small.clone()));
+                crate::rtl::label(
+                    ui,
+                    egui::RichText::new(format!("{} ▾", crate::i18n::tr(&app.ui.language, "[Basic] (working)"))).font(small.clone()),
+                );
                 ui.add_space(8.0);
                 // Preflight: overset text is an error.
                 let off = app.ui.preflight_off;

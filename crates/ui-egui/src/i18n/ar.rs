@@ -1206,7 +1206,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Web Hyperlink", "رابط ويب"),
     ("When Scaling", "عند التحجيم"),
     ("Words, one per line:", "الكلمات، واحدة في كل سطر:"),
-    ("[Basic] (working) ▾", "[أساسي] (قيد العمل) ▾"),
+    ("[Basic] (working)", "[أساسي] (قيد العمل)"),
     ("[Black] Overprint", "طباعة [الأسود] فوقيًا"),
     ("[No Group]", "[بلا مجموعة]"),
     ("[None] — choose a colour on the ramp.", "[بلا] — اختر لونًا على شريط التدرج."),

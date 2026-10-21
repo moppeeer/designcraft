@@ -956,7 +956,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Variable Font", "Proměnné písmo"),
     ("Welcome to DesignCraft", "Vítejte v DesignCraftu"),
     ("When Scaling", "Při změně měřítka"),
-    ("[Basic] (working) ▾", "[Základní] (pracovní) ▾"),
+    ("[Basic] (working)", "[Základní] (pracovní)"),
     ("[Black] Overprint", "Přetisk [černé]"),
     ("[No Group]", "[Bez skupiny]"),
     ("[None]", "[Žádný]"),
