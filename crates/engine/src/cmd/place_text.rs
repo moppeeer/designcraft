@@ -127,10 +127,111 @@ fn add_styles(d: &mut Document, imp: &designcraft_textimport::Imported, conflict
 }
 
 /// "Remove styles and formatting": every paragraph [Basic Paragraph], no local formatting.
-fn strip(story: &mut Story) {
+/// Remove Styles and Formatting: the text in [Basic Paragraph] and no character style; with
+/// `keep_local` (Preserve Local Overrides) the text keeps its own formatting (bold, italic…).
+fn strip(story: &mut Story, keep_local: bool) {
     let n = story.len();
     story.format_paras(0..n, |p| *p = ParaFormat { table: p.table, ..Default::default() });
-    story.format_chars(0..n, |f| *f = Default::default());
+    story.format_chars(0..n, |f| {
+        *f = if keep_local { designcraft_doc::CharFormat { over: f.over.clone(), ..Default::default() } } else { Default::default() }
+    });
+}
+
+/// The Word Import Options of `p` (`word`), over the defaults.
+fn import_options(p: &Value) -> Result<designcraft_doc::TextImportOptions> {
+    match p.get("word") {
+        None | Some(Value::Null) => Ok(Default::default()),
+        Some(v @ Value::Object(_)) => serde_json::from_value(v.clone()).map_err(|e| bad("file.place", format!("word: {e}"))),
+        Some(_) => Err(bad("file.place", "`word` must be an object")),
+    }
+}
+
+/// The options that change the imported text before it lands: styles removed (keeping local
+/// overrides when asked), tables as tabbed text, manual page breaks and typographer's quotes.
+fn convert(imp: &mut designcraft_textimport::Imported, remove: bool, o: &designcraft_doc::TextImportOptions) {
+    let st = &mut imp.story;
+    if remove {
+        strip(st, o.preserve_local_overrides);
+        imp.para_styles.clear();
+        imp.char_styles.clear();
+    }
+    if o.tables_as_tabbed_text {
+        let mut anchors: Vec<(usize, u64)> = st.tables.keys().filter_map(|id| Some((st.table_anchor(*id)?, *id))).collect();
+        anchors.sort_unstable();
+        for (a, id) in anchors.into_iter().rev() {
+            let text = st.tables.get(&id).map(|t| t.plain_text()).unwrap_or_default();
+            st.replace(a..a + designcraft_doc::TABLE_ANCHOR.len_utf8(), &text);
+        }
+    }
+    let page_break = designcraft_doc::PAGE_BREAK;
+    let to = match o.page_breaks {
+        designcraft_doc::PageBreakImport::Preserve => None,
+        designcraft_doc::PageBreakImport::Column => Some(designcraft_doc::COLUMN_BREAK.to_string()),
+        designcraft_doc::PageBreakImport::None => Some(String::new()),
+    };
+    if let Some(to) = to {
+        let at: Vec<usize> = st.text.match_indices(page_break).map(|(i, _)| i).collect();
+        for i in at.into_iter().rev() {
+            st.replace(i..i + page_break.len_utf8(), &to);
+        }
+    }
+    if o.typographers_quotes {
+        curl_quotes(st);
+    }
+}
+
+/// Straight quotes as curly ones: opening after a space, an opening bracket or the start of a
+/// paragraph, closing (or an apostrophe) elsewhere.
+fn curl_quotes(st: &mut Story) {
+    let text = st.text.clone();
+    let mut at: Vec<(usize, &str)> = Vec::new();
+    let mut prev: Option<char> = None;
+    for (i, c) in text.char_indices() {
+        let opening = prev.is_none_or(|p| p.is_whitespace() || "([{\u{2014}\u{2013}-".contains(p) || designcraft_doc::is_break_char(p));
+        match c {
+            '"' => at.push((i, if opening { "\u{201C}" } else { "\u{201D}" })),
+            '\'' => at.push((i, if opening { "\u{2018}" } else { "\u{2019}" })),
+            _ => {}
+        }
+        prev = Some(c);
+    }
+    for (i, q) in at.into_iter().rev() {
+        st.replace(i..i + 1, q);
+    }
+}
+
+/// Convert Bullets & Numbers to Text: each list paragraph's bullet or number becomes text at its
+/// start, and the paragraph is no longer in a list.
+fn lists_to_text(d: &mut Document, sid: StoryId) {
+    let Some(st) = d.story(sid) else { return };
+    let mut counter = designcraft_doc::ListCounter::default();
+    let mut labels = Vec::new();
+    for (i, r) in st.para_ranges().into_iter().enumerate() {
+        let Some(pf) = st.paras.get(i) else { break };
+        let (pp, _) = d.styles.resolve_para(pf);
+        let label = match pp.list_type {
+            designcraft_doc::ListType::Numbers | designcraft_doc::ListType::Bullets if r.is_empty() => None,
+            designcraft_doc::ListType::Numbers => {
+                counter.advance(&pp);
+                Some(pp.number_label_in(&counter))
+            }
+            designcraft_doc::ListType::Bullets => Some(pp.bullet_label()),
+            designcraft_doc::ListType::None => {
+                counter = Default::default();
+                None
+            }
+        };
+        if let Some(l) = label {
+            labels.push((i, r.start, l));
+        }
+    }
+    let Some(st) = d.story_mut(sid) else { return };
+    for (i, at, label) in labels.into_iter().rev() {
+        st.insert(at, &label);
+        if let Some(p) = st.paras.get_mut(i) {
+            p.para.list_type = Some(designcraft_doc::ListType::None);
+        }
+    }
 }
 
 /// The story's whole text replaced by the import's (its frames stay).
@@ -153,6 +254,7 @@ fn text_link(
     map: std::collections::HashMap<String, String>,
     conflict: Conflict,
     remove: bool,
+    options: &designcraft_doc::TextImportOptions,
     story: &Story,
 ) -> TextFileLink {
     TextFileLink {
@@ -163,6 +265,7 @@ fn text_link(
         style_map: map.into_iter().collect(),
         style_conflicts: conflict.name().into(),
         remove_styles: remove,
+        options: options.clone(),
         story_hash: super::links::story_hash(story),
     }
 }
@@ -179,12 +282,8 @@ pub(crate) fn reimport(
     let link =
         d.story(sid).and_then(|s| s.file_link.clone()).ok_or_else(|| bad("links.update", format!("story {} isn't linked to a file", sid.0)))?;
     let name = std::path::Path::new(path).file_name().map_or_else(|| path.to_string(), |n| n.to_string_lossy().to_string());
-    let mut imp = designcraft_textimport::import(&name, bytes).map_err(|e| bad("links.update", format!("{name}: {e}")))?;
-    if link.remove_styles {
-        strip(&mut imp.story);
-        imp.para_styles.clear();
-        imp.char_styles.clear();
-    }
+    let mut imp = designcraft_textimport::import_with(&name, bytes, &link.options).map_err(|e| bad("links.update", format!("{name}: {e}")))?;
+    convert(&mut imp, link.remove_styles, &link.options);
     let conflict = Conflict::parse(&link.style_conflicts)?;
     // A mapping to a style the document no longer has is dropped: that style is imported again.
     let map: std::collections::HashMap<String, String> =
@@ -193,7 +292,11 @@ pub(crate) fn reimport(
     add_styles(d, &imp, conflict);
     let story = d.story_mut(sid).ok_or(designcraft_doc::DocError::NoStory(sid))?;
     fill(story, &imp.story);
-    story.file_link = Some(text_link(path, bytes, before, map, conflict, link.remove_styles, story));
+    if link.options.bullets_to_text {
+        lists_to_text(d, sid);
+    }
+    let story = d.story_mut(sid).ok_or(designcraft_doc::DocError::NoStory(sid))?;
+    story.file_link = Some(text_link(path, bytes, before, map, conflict, link.remove_styles, &link.options, story));
     Ok(imp.warnings)
 }
 
@@ -342,13 +445,10 @@ pub(super) fn place_text(
     path: Option<String>,
     before: Option<designcraft_doc::Fingerprint>,
 ) -> Result<Value> {
-    let mut imp = designcraft_textimport::import(name, bytes).map_err(|e| bad("file.place", e.to_string()))?;
+    let opts = import_options(p)?;
+    let mut imp = designcraft_textimport::import_with(name, bytes, &opts).map_err(|e| bad("file.place", e.to_string()))?;
     let remove = p.get("removeStyles").and_then(Value::as_bool).unwrap_or(false);
-    if remove {
-        strip(&mut imp.story);
-        imp.para_styles.clear();
-        imp.char_styles.clear();
-    }
+    convert(&mut imp, remove, &opts);
     let conflict = Conflict::parse(p.get("styleConflicts").and_then(Value::as_str).unwrap_or("useExisting"))?;
     let map: std::collections::HashMap<String, String> = p
         .get("styleMap")
@@ -426,10 +526,13 @@ pub(super) fn place_text(
             };
             let story = d.story_mut(sid).ok_or(designcraft_doc::DocError::NoStory(sid))?;
             fill(story, &imp.story);
-            story.file_link = link.as_deref().map(|path| text_link(path, bytes, before, map.clone(), conflict, remove, story));
+            story.file_link = link.as_deref().map(|path| text_link(path, bytes, before, map.clone(), conflict, remove, &opts, story));
             *sel = designcraft_doc::Selection::items(vec![fid]);
             sid
         };
+        if opts.bullets_to_text {
+            lists_to_text(d, sid);
+        }
         let pages = if autoflow_on { autoflow(d, sid, 2000, "file.place", false)? } else { 0 };
         let overset = fit(d, sid).0.is_some();
         Ok(json!({"story": sid.0, "pagesAdded": pages, "overset": overset, "warnings": warnings}))
@@ -439,6 +542,48 @@ pub(super) fn place_text(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Microsoft Word Import Options that convert the text: styles removed with the local
+    /// overrides kept, typographer's quotes, tables as tabbed text, page breaks left out, bullets
+    /// and numbers as text; a linked file keeps them for Update Link.
+    #[test]
+    fn word_import_options_convert_the_text() {
+        let dir = std::env::temp_dir().join(format!("dc-word-opts-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cookbook.rtf");
+        // RTF: bold text with straight quotes, a page break, a bulleted paragraph.
+        let rtf = r#"{\rtf1\ansi {\b "Yummy" eggs} aren't hard.\par\page Next page.\par}"#;
+        std::fs::write(&path, rtf).unwrap();
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"pages": 1})).unwrap();
+        let word = json!({"typographersQuotes": true, "preserveLocalOverrides": true, "pageBreaks": "none"});
+        let r = s.execute("file.place", &json!({"path": path.to_string_lossy(), "removeStyles": true, "word": word, "link": true})).unwrap();
+        let sid = StoryId(r["story"].as_u64().unwrap());
+        let st = s.doc().unwrap().doc.story(sid).unwrap().clone();
+        assert!(st.text.contains("\u{201C}Yummy\u{201D}") && st.text.contains("aren\u{2019}t"), "{:?}", st.text);
+        assert!(!st.text.contains(designcraft_doc::PAGE_BREAK), "{:?}", st.text);
+        let bold = st.text.find("Yummy").unwrap();
+        assert_eq!(st.format_after(bold).over.font_style.as_deref(), Some("Bold"), "the bold local override is kept");
+        assert_eq!(st.file_link.as_ref().unwrap().options.page_breaks, designcraft_doc::PageBreakImport::None);
+        assert!(s.execute("file.place", &json!({"path": path.to_string_lossy(), "word": {"pageBreaks": "sideways"}})).is_err());
+
+        // Bullets and numbers as text; tables as tabbed text.
+        let mut st = Story::with_text(StoryId(0), "One\nTwo", ParaFormat::default());
+        st.format_paras(0..st.len(), |p| p.para.list_type = Some(designcraft_doc::ListType::Numbers));
+        let mut d = (*s.doc().unwrap().doc).clone();
+        let sid = StoryId(d.alloc());
+        st.id = sid;
+        d.stories.insert(sid, std::sync::Arc::new(st));
+        lists_to_text(&mut d, sid);
+        let st = d.story(sid).unwrap();
+        assert!(st.text.starts_with("1.") && st.text.contains("\n2."), "{:?}", st.text);
+        assert!(st.paras.iter().all(|p| p.para.list_type == Some(designcraft_doc::ListType::None)));
+        let t = designcraft_doc::Table::from_strings(1, &[vec!["a".into(), "b".into()]], 300.0, &ParaFormat::default(), &Default::default());
+        let mut imp = designcraft_textimport::Imported { story: Story::new(StoryId(0)), para_styles: vec![], char_styles: vec![], warnings: vec![] };
+        imp.story.insert_table(0, t);
+        convert(&mut imp, false, &designcraft_doc::TextImportOptions { tables_as_tabbed_text: true, ..Default::default() });
+        assert!(imp.story.tables.is_empty() && imp.story.text.contains("a\tb"), "{:?}", imp.story.text);
+    }
 
     #[test]
     fn place_text_file_with_autoflow() {
