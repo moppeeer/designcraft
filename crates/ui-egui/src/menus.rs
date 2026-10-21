@@ -1195,13 +1195,13 @@ fn run_ui_inner(app: &mut DesignApp, id: &str, p: &Value) -> Option<Result<Value
             crate::effects_dialog::open(app, p.get("page").and_then(Value::as_str).unwrap_or("transparency"));
             Ok(Value::Null)
         }
-        "objectStyle.dialog" => {
-            match p.get("name").and_then(Value::as_str) {
-                Some(n) => crate::object_style_dialog::open_edit(app, n),
-                None => crate::object_style_dialog::open_new(app),
+        "objectStyle.dialog" => match p.get("name").and_then(Value::as_str) {
+            Some(n) => crate::object_style_dialog::open_edit(app, n).map(|()| Value::Null),
+            None => {
+                crate::object_style_dialog::open_new(app);
+                Ok(Value::Null)
             }
-            Ok(Value::Null)
-        }
+        },
         "app.loadSwatches" => {
             if let Some(pick) = app.services.pick_open.as_mut() {
                 return Some(match pick("swatches") {

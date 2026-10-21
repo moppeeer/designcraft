@@ -67,11 +67,14 @@ pub fn open_new(app: &mut DesignApp) {
     app.ui.dialog = Some(Dialog::new(ID, fields));
 }
 
-/// Object Style Options for style `name`.
-pub fn open_edit(app: &mut DesignApp, name: &str) {
-    let Some(os) = app.session.active().and_then(|st| st.doc.styles.object_style(name).cloned()) else { return };
+/// Object Style Options for style `name`; refused for a style the document doesn't have and for
+/// `[None]`, which has no options.
+pub fn open_edit(app: &mut DesignApp, name: &str) -> Result<(), String> {
+    let Some(os) = app.session.active().and_then(|st| st.doc.styles.object_style(name).cloned()) else {
+        return Err(format!("no object style `{name}`"));
+    };
     if name == designcraft_doc::NO_OBJECT_STYLE {
-        return;
+        return Err(format!("`{name}` has no options"));
     }
     let mut fields = json!({
         "new": false,
@@ -92,6 +95,7 @@ pub fn open_edit(app: &mut DesignApp, name: &str) {
     });
     text_fields(app, &mut fields, os.paragraph_style.as_deref(), os.apply_next_style, &os.text_frame.clone().unwrap_or_default());
     app.ui.dialog = Some(Dialog::new(ID, fields));
+    Ok(())
 }
 
 /// The dialog's title: New Object Style or Object Style Options.
@@ -132,7 +136,10 @@ fn frame_options(d: &Dialog) -> Result<Option<designcraft_doc::TextFrameOptions>
     let mut o: designcraft_doc::TextFrameOptions = d.fields.get("tfBase").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
     let bad = |what: &str| format!("Text Frame General Options: {what}");
     let measure = |key: &str| d.m(key).filter(|v| v.is_finite() && (0.0..=15552.0).contains(v));
-    o.columns = d.n("columns").filter(|n| (1.0..=40.0).contains(n)).ok_or_else(|| bad("the number of columns is 1–40"))? as u32;
+    o.columns = d
+        .n("columns")
+        .filter(|n| (1.0..=40.0).contains(n) && n.fract() == 0.0)
+        .ok_or_else(|| bad("the number of columns is a whole number from 1 to 40"))? as u32;
     o.gutter = measure("gutter").ok_or_else(|| bad("the gutter is not a measure"))?;
     o.columns_kind = serde_json::from_value(json!(d.s("columnsKind"))).unwrap_or(o.columns_kind);
     if o.columns_kind == designcraft_doc::ColumnsKind::FixedWidth {
@@ -591,7 +598,7 @@ mod tests {
 
         let b = app.run("frame.create", json!({"rect": [200, 72, 300, 172], "content": "graphic"})).unwrap()["id"].as_u64().unwrap();
         app.run("style.object.apply", json!({"name": name, "ids": [b]})).unwrap();
-        open_edit(&mut app, name);
+        open_edit(&mut app, name).unwrap();
         if let Some(d) = app.ui.dialog.as_mut() {
             assert_eq!(title(d), "Object Style Options");
             set(d, &["stroke", "weight"], json!(5.0));
@@ -648,7 +655,7 @@ mod tests {
         app.run("type.fillWithPlaceholder", json!({"frame": id})).unwrap();
         assert!(story(&app).paras.iter().all(|p| p.style == "Drop Cap First Paragraph"));
 
-        open_edit(&mut app, "Text Box Drop Cap");
+        open_edit(&mut app, "Text Box Drop Cap").unwrap();
         let texts = frame(&mut app, &ctx);
         assert!(texts.iter().any(|x| x.starts_with("Paragraph Styles: Drop Cap First Paragraph")), "Style Settings: {texts:?}");
         if let Some(d) = app.ui.dialog.as_mut() {
@@ -669,14 +676,32 @@ mod tests {
         let os = doc(&app).styles.object_style("Text Box Drop Cap").cloned().unwrap();
         assert_eq!((os.paragraph_style.as_deref(), os.text_frame.map(|t| t.columns)), (Some("Drop Cap First Paragraph"), Some(2)));
 
-        // A word for the gutter keeps the dialog open with the reason.
-        open_edit(&mut app, "Text Box Drop Cap");
-        if let Some(d) = app.ui.dialog.as_mut() {
-            d.fields.insert("gutter".into(), json!("wide"));
+        // A word for the gutter, or a fraction of a column, keeps the dialog open with the reason.
+        for (field, value, reason) in [("gutter", "wide", "gutter"), ("columns", "2.5", "columns")] {
+            open_edit(&mut app, "Text Box Drop Cap").unwrap();
+            if let Some(d) = app.ui.dialog.as_mut() {
+                d.fields.insert(field.into(), json!(value));
+            }
+            let e = crate::dialogs::confirm(&mut app).unwrap_err();
+            assert!(e.contains(reason), "{e}");
+            assert!(app.ui.dialog.is_some());
+            app.ui.dialog = None;
         }
-        let e = crate::dialogs::confirm(&mut app).unwrap_err();
-        assert!(e.contains("gutter"), "{e}");
-        assert!(app.ui.dialog.is_some());
+        let os = doc(&app).styles.object_style("Text Box Drop Cap").cloned().unwrap();
+        assert_eq!(os.text_frame.map(|t| t.columns), Some(2), "2.5 columns changed nothing");
+    }
+
+    /// `objectStyle.dialog` with a style the document lacks, or `[None]`, is an error and opens
+    /// nothing; without a name it opens New Object Style.
+    #[test]
+    fn the_dialog_command_refuses_a_style_with_no_options() {
+        let (mut app, _) = app_with_frame();
+        for name in ["Nope", designcraft_doc::NO_OBJECT_STYLE] {
+            assert!(app.run("objectStyle.dialog", json!({"name": name})).is_err(), "{name}");
+            assert!(app.ui.dialog.is_none(), "{name}");
+        }
+        app.run("objectStyle.dialog", json!({})).unwrap();
+        assert!(app.ui.dialog.as_ref().is_some_and(|d| d.b("new")));
     }
 
     /// A refused OK (an empty name, a name another style has) keeps the dialog and its edits,
@@ -698,7 +723,7 @@ mod tests {
         assert_eq!(d.s("status"), "Enter a style name.");
         assert_eq!(get(d, &["stroke", "weight"]), &json!(7.0), "the edits are kept");
         assert!(frame(&mut app, &ctx).iter().any(|t| t.trim() == "Enter a style name."));
-        open_edit(&mut app, "Mine");
+        open_edit(&mut app, "Mine").unwrap();
         if let Some(d) = app.ui.dialog.as_mut() {
             d.fields.insert("name".into(), json!("Taken"));
         }
