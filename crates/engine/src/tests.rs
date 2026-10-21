@@ -685,6 +685,55 @@ fn object_style_effects_follow_the_style_until_overridden() {
     assert_eq!(s.doc().unwrap().revision, rev);
 }
 
+/// The course's "Rounded Corner Image, White Stroke" style: made from a frame with rounded corners
+/// and a paper stroke, applied to another frame, then edited (a thicker stroke, bigger corners):
+/// the frames that follow the style change, one with its own stroke keeps it; a rename follows.
+#[test]
+fn object_styles_carry_corners_and_their_stroke_and_corners_can_be_edited() {
+    use designcraft_doc::ItemId;
+    use designcraft_geom::corners::CornerShape;
+    let mut s = session();
+    let frame = |s: &mut Session, x: f64| {
+        s.execute("frame.create", &json!({"rect": [x, 36, x + 100.0, 136], "content": "graphic"})).unwrap()["id"].as_u64().unwrap()
+    };
+    let item = |s: &Session, id: u64| s.doc().unwrap().doc.item(ItemId(id)).unwrap().clone();
+    let a = frame(&mut s, 36.0);
+    s.execute("object.cornerOptions", &json!({"shape": "rounded", "size": 18, "ids": [a]})).unwrap();
+    s.execute("object.stroke", &json!({"swatch": "[Paper]", "weight": 2.5, "ids": [a]})).unwrap();
+    s.execute("selection.set", &json!({"ids": [a]})).unwrap();
+    let name =
+        s.execute("style.object.create", &json!({"name": "Rounded Corner Image, White Stroke"})).unwrap()["name"].as_str().unwrap().to_string();
+    let os = s.doc().unwrap().doc.styles.object_style(&name).cloned().unwrap();
+    assert_eq!(os.corners.unwrap().corners[0].shape, CornerShape::Rounded);
+    let (b, c) = (frame(&mut s, 200.0), frame(&mut s, 360.0));
+    s.execute("style.object.apply", &json!({"name": name, "ids": [a, b, c]})).unwrap();
+    assert_eq!((item(&s, b).corners, item(&s, b).stroke.weight, item(&s, b).stroke.swatch.as_str()), (item(&s, a).corners, 2.5, "[Paper]"));
+    s.execute("object.stroke", &json!({"weight": 1, "ids": [c]})).unwrap();
+
+    let r = s.execute("style.object.edit", &json!({"name": name, "stroke": {"weight": 6}, "corners": {"size": 30}})).unwrap();
+    assert_eq!(r["updated"], 3);
+    assert_eq!((item(&s, a).stroke.weight, item(&s, b).stroke.weight, item(&s, c).stroke.weight), (6.0, 6.0, 1.0));
+    assert_eq!(item(&s, b).stroke.swatch, "[Paper]");
+    assert!(item(&s, c).corners.corners.iter().all(|k| k.shape == CornerShape::Rounded && k.size == 30.0), "corners follow apart from the stroke");
+    s.execute("style.object.edit", &json!({"name": name, "fill": "[Black]"})).unwrap();
+    assert_eq!(item(&s, b).fill.swatch, "[Black]");
+
+    // Renamed, the items keep the style; a name in use or a built-in one is refused.
+    s.execute("style.object.edit", &json!({"name": name, "rename": "Framed"})).unwrap();
+    assert_eq!(item(&s, a).object_style, "Framed");
+    assert!(s.doc().unwrap().doc.styles.object_style(&name).is_none());
+    assert!(s.execute("style.object.edit", &json!({"name": "Framed", "rename": "[Basic Text Frame]"})).is_err());
+    assert!(s.execute("style.object.edit", &json!({"name": "[Basic Graphics Frame]", "rename": "Mine"})).is_err());
+    assert!(s.execute("style.object.edit", &json!({"name": "Framed", "corners": {"size": "big"}})).is_err());
+    // null: the style stops setting corners, the items keep theirs.
+    s.execute("style.object.edit", &json!({"name": "Framed", "corners": null})).unwrap();
+    assert!(s.doc().unwrap().doc.styles.object_style("Framed").unwrap().corners.is_none());
+    assert_eq!(item(&s, a).corners.corners[0].size, 30.0);
+    s.execute("edit.undo", &json!({})).unwrap();
+    s.execute("edit.undo", &json!({})).unwrap();
+    assert_eq!(item(&s, a).object_style, name);
+}
+
 #[test]
 fn object_style_effects_reach_grouped_and_anchored_items() {
     use designcraft_doc::ItemId;

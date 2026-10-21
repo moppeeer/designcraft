@@ -1271,7 +1271,11 @@ impl<'r> Importer<'r> {
                 None
             };
             let effects = self.style_effects(e);
-            let s = ObjectStyle { name: name.clone(), based_on, fill, stroke, paragraph_style, text_frame, effects };
+            // Corner options, when the style sets them (Stroke & Corner Options): the named corners
+            // in a rectangle's path order.
+            let corners =
+                (e.get("EnableStrokeAndCornerOptions") != Some("false")).then(|| corners(e, "")).flatten().map(|c| CornerOptions { corners: c });
+            let s = ObjectStyle { name: name.clone(), based_on, fill, stroke, paragraph_style, text_frame, effects, corners };
             match self.styles.object.iter_mut().find(|o| o.name == name) {
                 Some(slot) => *slot = s,
                 None => self.styles.object.push(s),

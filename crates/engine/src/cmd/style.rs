@@ -359,7 +359,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "New Object Style…",
             [],
             None,
-            "{name, fromSelection?: true (fill, stroke, effects and text frame options of the first selected item), fill?, paragraphStyle?, effects?: {dropShadow?, feather?, innerShadow?, outerGlow?, innerGlow?, bevel?, satin?, gradientFeather?, directionalFeather?}, dropShadow?: {on?, color?, opacity? (0–1), angle?, globalLight?, distance?, size?, spread?}, feather?: width, innerShadow?, outerGlow?, innerGlow?, bevel?, satin?, gradientFeather?, directionalFeather?} → {name} (made unique)",
+            "{name, fromSelection?: true (fill, stroke, corners, effects and text frame options of the first selected item), fill?: swatch | {swatch?, tint?}, stroke?: {swatch?, weight?, tint?, type?, …}, corners?: {shape?, size?} | {corners: [{shape, size}] ×4}, paragraphStyle?, effects?: {dropShadow?, feather?, innerShadow?, outerGlow?, innerGlow?, bevel?, satin?, gradientFeather?, directionalFeather?}, dropShadow?: {on?, color?, opacity? (0–1), angle?, globalLight?, distance?, size?, spread?}, feather?: width, innerShadow?, outerGlow?, innerGlow?, bevel?, satin?, gradientFeather?, directionalFeather?} → {name} (made unique)",
             has_doc,
             create_object
         ),
@@ -368,7 +368,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Object Style Options…",
             [],
             None,
-            "{name, effects?: {…} | null (the style no longer sets effects), dropShadow?, feather?, innerShadow?, outerGlow?, innerGlow?, bevel?, satin?, gradientFeather?, directionalFeather?} — effect objects merge field by field into the style's effects (fields as in `document.inspect` item effects); values that aren't finite numbers are refused, the others clamped (opacities 0–1, sizes and distances ≥ 0); items using the style whose effects match the style's (no effects, when the style set none) take the new effects, items with their own effects keep them → {name, updated}",
+            "{name, rename?: new name (every use follows), fill?: swatch | {swatch?, tint?} | null, stroke?: {swatch?, weight?, tint?, type?, …} | null, corners?: {shape?: none|rounded|inverseRounded|inset|bevel|fancy, size?} | {corners: [{shape, size}] ×4} | null (null: the style no longer sets it; items keep theirs), effects?: {…} | null (the style no longer sets effects), dropShadow?, feather?, innerShadow?, outerGlow?, innerGlow?, bevel?, satin?, gradientFeather?, directionalFeather?} — effect objects merge field by field into the style's effects (fields as in `document.inspect` item effects); values that aren't finite numbers are refused, the others clamped (opacities 0–1, sizes and distances ≥ 0); items using the style whose effects (fill, stroke, corners) match the style's (an item's defaults, when the style set none) take the new ones, items with their own keep them → {name, updated}",
             has_doc,
             edit_object
         ),
@@ -1507,11 +1507,19 @@ fn create_object(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(it) = &src {
         os.fill = Some(it.fill.clone());
         os.stroke = Some(it.stroke.clone());
+        os.corners = Some(it.corners);
         os.text_frame = it.text_frame().map(|t| t.options.clone());
         os.effects = Some(it.effects.clone());
     }
-    if let Some(sw) = str_param(p, "fill") {
-        os.fill = Some(designcraft_doc::Fill::swatch(sw));
+    const CREATE: &str = "style.object.create";
+    if let Some(f) = fill_param(CREATE, p, os.fill.as_ref())? {
+        os.fill = f;
+    }
+    if let Some(st) = group_param(CREATE, p, "stroke", os.stroke.as_ref().unwrap_or(&designcraft_doc::Stroke::default()))? {
+        os.stroke = st;
+    }
+    if let Some(c) = corners_param(CREATE, p, os.corners.unwrap_or_default())? {
+        os.corners = c;
     }
     if let Some(ps) = str_param(p, "paragraphStyle") {
         os.paragraph_style = Some(ps.to_string());
@@ -1527,6 +1535,68 @@ fn create_object(s: &mut Session, p: &Value) -> Result<Value> {
     })
 }
 
+/// `p[key]`, an attribute group of a style, merged field by field over `base`: `None` when not
+/// given, `Some(None)` for null (the style no longer sets it).
+fn group_param<T: serde::Serialize + serde::de::DeserializeOwned>(cmd: &str, p: &Value, key: &str, base: &T) -> Result<Option<Option<T>>> {
+    match p.get(key) {
+        None => Ok(None),
+        Some(Value::Null) => Ok(Some(None)),
+        Some(v @ Value::Object(_)) => {
+            let mut cur = serde_json::to_value(base).map_err(|e| bad(cmd, e.to_string()))?;
+            merge_json(&mut cur, v.clone(), 0);
+            serde_json::from_value(cur).map(|t| Some(Some(t))).map_err(|e| bad(cmd, format!("{key}: {e}")))
+        }
+        Some(_) => Err(bad(cmd, format!("`{key}` must be an object or null"))),
+    }
+}
+
+/// `fill`: a swatch name, `{swatch?, tint?}` over `base`, or null.
+fn fill_param(cmd: &str, p: &Value, base: Option<&designcraft_doc::Fill>) -> Result<Option<Option<designcraft_doc::Fill>>> {
+    if let Some(sw) = p.get("fill").and_then(Value::as_str) {
+        return Ok(Some(Some(designcraft_doc::Fill::swatch(sw))));
+    }
+    let fill = group_param(cmd, p, "fill", base.unwrap_or(&designcraft_doc::Fill::default()))?;
+    if let Some(Some(f)) = &fill
+        && !(f.tint.is_finite() && (0.0..=1.0).contains(&f.tint))
+    {
+        return Err(bad(cmd, "fill tint must be 0–1"));
+    }
+    Ok(fill)
+}
+
+/// `corners`: `{shape?, size?}` for all four, `{corners: [{shape, size}] ×4}`, or null.
+fn corners_param(
+    cmd: &str,
+    p: &Value,
+    base: designcraft_geom::corners::CornerOptions,
+) -> Result<Option<Option<designcraft_geom::corners::CornerOptions>>> {
+    let Some(v) = p.get("corners") else { return Ok(None) };
+    if v.is_null() {
+        return Ok(Some(None));
+    }
+    let o = v.as_object().ok_or_else(|| bad(cmd, "`corners` must be an object or null"))?;
+    let mut c = if o.contains_key("corners") {
+        serde_json::from_value::<designcraft_geom::corners::CornerOptions>(v.clone()).map_err(|e| bad(cmd, format!("corners: {e}")))?
+    } else {
+        base
+    };
+    if let Some(sh) = o.get("shape") {
+        let shape = serde_json::from_value(sh.clone()).map_err(|e| bad(cmd, format!("corner shape: {e}")))?;
+        c.corners.iter_mut().for_each(|k| k.shape = shape);
+    }
+    if let Some(sz) = o.get("size") {
+        let size = sz.as_f64().filter(|v| v.is_finite()).ok_or_else(|| bad(cmd, "corner size must be a number"))?;
+        c.corners.iter_mut().for_each(|k| k.size = size);
+    }
+    for k in &mut c.corners {
+        if !k.size.is_finite() {
+            return Err(bad(cmd, "corner sizes must be finite"));
+        }
+        k.size = k.size.clamp(0.0, 10_000.0);
+    }
+    Ok(Some(Some(c)))
+}
+
 fn edit_object(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "style.object.edit";
     let name = str_param(p, "name").ok_or_else(|| bad(CMD, "missing name"))?.to_string();
@@ -1534,34 +1604,104 @@ fn edit_object(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad(CMD, format!("`{name}` can't be edited")));
     }
     let old = s.doc()?.doc.styles.object_style(&name).cloned().ok_or_else(|| bad(CMD, format!("no object style `{name}`")))?;
-    let effects = if p.get("effects").is_some_and(Value::is_null) {
+    let mut new = old.clone();
+    if p.get("effects").is_some_and(Value::is_null) {
         if EFFECT_KEYS.iter().any(|k| p.get(k).is_some()) {
             return Err(bad(CMD, "`effects: null` can't be combined with effect settings"));
         }
-        None
-    } else {
-        match effects_param(CMD, p, old.effects.as_ref().unwrap_or(&Effects::default()))? {
-            Some(e) => Some(e),
-            None => return Ok(json!({"name": name, "updated": 0})),
+        new.effects = None;
+    } else if let Some(e) = effects_param(CMD, p, old.effects.as_ref().unwrap_or(&Effects::default()))? {
+        new.effects = Some(e);
+    }
+    if let Some(f) = fill_param(CMD, p, old.fill.as_ref())? {
+        new.fill = f;
+    }
+    if let Some(st) = group_param(CMD, p, "stroke", old.stroke.as_ref().unwrap_or(&designcraft_doc::Stroke::default()))? {
+        if let Some(st) = &st
+            && !(st.weight.is_finite() && st.weight >= 0.0 && st.tint.is_finite())
+        {
+            return Err(bad(CMD, "stroke weight must be a number ≥ 0"));
         }
-    };
-    if effects == old.effects {
+        new.stroke = st;
+    }
+    if let Some(c) = corners_param(CMD, p, old.corners.unwrap_or_default())? {
+        new.corners = c;
+    }
+    let rename = str_param(p, "rename").map(str::trim).filter(|r| *r != name).map(str::to_string);
+    if let Some(r) = &rename {
+        let builtin = name.starts_with('[') && name.ends_with(']');
+        if builtin || r.is_empty() || (r.starts_with('[') && r.ends_with(']')) {
+            return Err(bad(CMD, format!("`{name}` can't be renamed to `{r}`")));
+        }
+        if s.doc()?.doc.styles.object_style(r).is_some() {
+            return Err(bad(CMD, format!("an object style is already named `{r}`")));
+        }
+        new.name = r.clone();
+    }
+    if new == old {
         return Ok(json!({"name": name, "updated": 0}));
     }
     s.edit(|d, _| {
         let Some(os) = d.styles_mut().object.iter_mut().find(|o| o.name == name) else {
             return Err(bad(CMD, format!("no object style `{name}`")));
         };
-        os.effects = effects.clone();
-        // An item follows the style while its effects are the style's. When the style didn't set
-        // effects before, only items without effects of their own follow (the default styles are
-        // on most frames).
-        let follows = old.effects.clone().unwrap_or_default();
-        let updated = match &effects {
-            Some(new) => d.update_items(|it| it.object_style == name && it.effects == follows, |it| it.effects = new.clone()),
-            None => 0,
+        *os = new.clone();
+        if let Some(r) = &rename {
+            let st = d.styles_mut();
+            for o in &mut st.object {
+                if o.based_on.as_deref() == Some(name.as_str()) {
+                    o.based_on = Some(r.clone());
+                }
+            }
+            for n in [&mut st.default_text_frame, &mut st.default_graphic_frame] {
+                if *n == name {
+                    *n = r.clone();
+                }
+            }
+            d.update_items(|it| it.object_style == name, |it| it.object_style = r.clone());
+        }
+        // An item follows each attribute the style sets while it has the style's value. When the
+        // style didn't set it before, items with the default follow (the default styles are on
+        // most frames). An attribute the style no longer sets stays as it is on the items.
+        let effects = (new.effects != old.effects).then_some(new.effects.clone()).flatten().map(|e| (old.effects.clone().unwrap_or_default(), e));
+        let fill = (new.fill != old.fill).then_some(new.fill.clone()).flatten().map(|f| (old.fill.clone().unwrap_or_default(), f));
+        let stroke = (new.stroke != old.stroke)
+            .then_some(new.stroke.clone())
+            .flatten()
+            .map(|f| (old.stroke.clone().unwrap_or_else(designcraft_doc::Stroke::none), f));
+        let corners = (new.corners != old.corners).then_some(new.corners).flatten().map(|c| (old.corners.unwrap_or_default(), c));
+        let follows = |it: &Item| {
+            effects.as_ref().is_some_and(|(o, _)| it.effects == *o)
+                || fill.as_ref().is_some_and(|(o, _)| it.fill == *o)
+                || stroke.as_ref().is_some_and(|(o, _)| it.stroke == *o)
+                || corners.as_ref().is_some_and(|(o, _)| it.corners == *o)
         };
-        Ok(json!({"name": name, "updated": updated}))
+        let updated = d.update_items(
+            |it| it.object_style == new.name && follows(it),
+            |it| {
+                if let Some((o, n)) = &effects
+                    && it.effects == *o
+                {
+                    it.effects = n.clone();
+                }
+                if let Some((o, n)) = &fill
+                    && it.fill == *o
+                {
+                    it.fill = n.clone();
+                }
+                if let Some((o, n)) = &stroke
+                    && it.stroke == *o
+                {
+                    it.stroke = n.clone();
+                }
+                if let Some((o, n)) = &corners
+                    && it.corners == *o
+                {
+                    it.corners = *n;
+                }
+            },
+        );
+        Ok(json!({"name": new.name, "updated": updated}))
     })
 }
 
