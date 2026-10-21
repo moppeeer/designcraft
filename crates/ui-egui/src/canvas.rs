@@ -1160,9 +1160,13 @@ fn draw_item_edges(painter: &egui::Painter, xf: &Xf, doc: &Document, it: &Item, 
 /// corners, so a frame slanted with Direct Selection keeps its X corner to corner, as InDesign
 /// draws it; other shapes span their bounds.
 fn frame_x(it: &Item) -> [(Point, Point); 2] {
-    if let [sp] = it.path.subpaths.as_slice()
+    // A rectangle (slanted or not: four corner points, no handles). Ellipses, polygons (a
+    // four-sided one is a diamond) and curved paths keep the X across their bounds.
+    if matches!(it.shape, designcraft_doc::Shape::Rectangle | designcraft_doc::Shape::Path)
+        && let [sp] = it.path.subpaths.as_slice()
         && sp.closed
         && let [c0, c1, c2, c3] = sp.anchors.as_slice()
+        && sp.anchors.iter().all(|a| a.h_in == a.p && a.h_out == a.p)
     {
         return [(c0.p, c2.p), (c1.p, c3.p)];
     }
@@ -3123,6 +3127,26 @@ mod tests {
         lines.iter_mut().for_each(|l| l.sort_by(|a, b| a.partial_cmp(b).unwrap()));
         lines.sort_by(|a, b| a.partial_cmp(b).unwrap());
         assert_eq!(lines, vec![[(100.0, 160.0), (230.0, 100.0)], [(130.0, 100.0), (200.0, 160.0)]], "the slanted corners");
+        // An ellipse frame (four smooth anchors) keeps the X across its bounds, not a plus.
+        let e = app.run("frame.create", json!({"rect": [300, 100, 400, 160], "shape": "ellipse"})).unwrap()["id"].as_u64().unwrap();
+        let it = app.session.active().unwrap().doc.item(designcraft_doc::ItemId(e)).unwrap().clone();
+        let mut lines: Vec<[(f64, f64); 2]> = frame_x(&it)
+            .map(|(a, b)| {
+                let (a, b) = (it.xf * a, it.xf * b);
+                [(a.x.round(), a.y.round()), (b.x.round(), b.y.round())]
+            })
+            .to_vec();
+        lines.iter_mut().for_each(|l| l.sort_by(|a, b| a.partial_cmp(b).unwrap()));
+        lines.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(lines, vec![[(300.0, 100.0), (400.0, 160.0)], [(300.0, 160.0), (400.0, 100.0)]], "the ellipse's bounds");
+        // So does a four-sided polygon frame (a diamond): its corners would cross as a plus.
+        let mut diamond = it.clone();
+        diamond.shape = designcraft_doc::Shape::Polygon;
+        for a in &mut diamond.path.subpaths[0].anchors {
+            (a.h_in, a.h_out) = (a.p, a.p);
+        }
+        let lines: Vec<_> = frame_x(&diamond).to_vec();
+        assert!(lines.iter().all(|(a, b)| (a.x - b.x).abs() > 1e-6 && (a.y - b.y).abs() > 1e-6), "diagonals, not a plus: {lines:?}");
     }
 
     /// Each preview mode's shown area: Preview stops at the trim, Bleed reaches the bleed box and
