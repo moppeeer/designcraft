@@ -767,10 +767,19 @@ fn legacy_table_and_control_visibility_work_after_customization_without_document
     let doc = serde_json::to_value(&app.session.active().unwrap().doc).unwrap();
     let undo = app.session.active().unwrap().history.undo.len();
     app.run("window.panel.float", json!({"panel":"layers"})).unwrap();
+    // With Table's flyout open (it isn't in the layout), Shift+F9 closes the flyout instead of
+    // docking Table under it.
+    let before = app.ui.docking.clone();
+    app.run("window.panel", json!({"panel": "table", "from": "icons"})).unwrap();
+    assert_eq!(app.ui.open_panel.as_deref(), Some("table"), "the Table flyout");
+    app.run("app.tablePanel", json!({})).unwrap();
+    assert!(app.ui.open_panel.is_none(), "Shift+F9 closes it");
+    assert_eq!(app.ui.docking, before, "and docks nothing");
     app.run("app.tablePanel", json!({})).unwrap();
     assert!(app.ui.docking.as_ref().unwrap().contains(&"table".into()));
     app.run("app.tablePanel", json!({})).unwrap();
     assert!(!app.ui.docking.as_ref().unwrap().contains(&"table".into()));
+    app.run("app.tablePanel", json!({})).unwrap();
     app.run("app.tablePanel", json!({})).unwrap();
     let ctx = egui::Context::default();
     let (req, _) = crate::control::ControlRequest::new("ui.set", json!({"closePanel":true,"dockExpanded":false}));

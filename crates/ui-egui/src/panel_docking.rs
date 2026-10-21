@@ -173,8 +173,15 @@ pub(crate) fn command(app: &mut DesignApp, id: &str, params: &Value) -> Option<R
     if id == "window.panel.floatGroup" {
         return Some(float_group(app, params));
     }
+    // Shift+F9 toggles Table: an open Table flyout closes (it isn't docked, so docking it would
+    // leave the flyout up); otherwise Table docks, or closes when it's in the layout.
     if id == "app.tablePanel" && app.ui.docking.is_some() {
         let panel = "table".to_string();
+        if app.ui.open_panel.as_deref() == Some("table")
+            && let Some(r) = iconic_command(app, "window.panel.close", &json!({"panel": panel}))
+        {
+            return Some(r);
+        }
         let visible = app.ui.docking.as_ref().is_some_and(|layout| layout.contains(&panel));
         return Some(change(app, if visible { "close" } else { "activate" }, &json!({"panel": panel})));
     }
