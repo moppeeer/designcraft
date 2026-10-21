@@ -27,18 +27,23 @@ pub fn specs() -> Vec<CommandSpec> {
         ),
         cmd!("guide.move", "Move Guide", [], None, "{spread?, page, index, position}", has_doc, move_guide),
         cmd!("guide.delete", "Delete Guide", [], None, "{spread?, page, index}", has_doc, delete),
-        cmd!("guide.deleteAll", "Delete All Guides on Spread", ["View", "Grids & Guides"], None, "{spread?}", has_doc, |s, p| {
-            let r = super::spread_param(p, "guide.deleteAll")?;
-            s.edit(|d, _| {
-                let sp = d.spread_mut(r).ok_or_else(|| bad("guide.deleteAll", "no such spread"))?;
-                let mut n = 0;
-                for pg in &mut sp.pages {
-                    n += pg.guides.len();
-                    pg.guides.clear();
-                }
-                Ok(json!({"deleted": n}))
-            })
-        }),
+        cmd!(
+            "guide.deleteAll",
+            "Delete All Guides on Spread",
+            ["View", "Grids & Guides"],
+            None,
+            "{spread?} — a locked guide, and the guides of a layer that is locked, hidden or locks its guides, stay → {deleted}",
+            has_doc,
+            |s, p| {
+                let r = super::spread_param(p, "guide.deleteAll")?;
+                s.edit(|d, _| {
+                    let keep = kept_guides(d, r).ok_or_else(|| bad("guide.deleteAll", "no such spread"))?;
+                    let sp = d.spread_mut(r).ok_or_else(|| bad("guide.deleteAll", "no such spread"))?;
+                    let n: usize = sp.pages.iter_mut().zip(&keep).map(|(pg, keep)| remove_guides(&mut pg.guides, keep)).sum();
+                    Ok(json!({"deleted": n}))
+                })
+            }
+        ),
         cmd!(query "guide.list", "Guides", [], None, "{spread?} → [{page, index, orientation, position, spread}]", has_doc, |s, p| {
             let d = &s.doc()?.doc;
             let sp = d.spread(super::spread_param(p, "guide.list")?).ok_or_else(|| bad("guide.list", "no such spread"))?;
@@ -274,6 +279,7 @@ fn create_guides(s: &mut Session, p: &Value) -> Result<Value> {
         .ok_or_else(|| bad("layout.createGuides", format!("a single command may create at most {MAX_GUIDES_CREATED} guides")))?;
     let layer = s.doc()?.active_layer;
     s.edit(|d, _| {
+        let keep = kept_guides(d, r).ok_or_else(|| bad("layout.createGuides", "no such spread"))?;
         let sp = d.spread_mut(r).ok_or_else(|| bad("layout.createGuides", "no such spread"))?;
         let mut n = 0usize;
         for (pi, pg) in sp.pages.iter_mut().enumerate() {
@@ -281,7 +287,7 @@ fn create_guides(s: &mut Session, p: &Value) -> Result<Value> {
                 continue;
             }
             if remove {
-                pg.guides.clear();
+                remove_guides(&mut pg.guides, keep.get(pi).map_or(&[][..], Vec::as_slice));
             }
             let area: Rect = if to_page { pg.bounds() } else { pg.margin_rect() };
             for y in grid_positions(area.y0, area.y1, rows, rg)? {
@@ -309,6 +315,20 @@ fn create_guides(s: &mut Session, p: &Value) -> Result<Value> {
         }
         Ok(json!({"guides": n}))
     })
+}
+
+/// Per page of spread `r`, the guides that can't be edited (locked, or on a layer that is locked,
+/// hidden or locks its guides): what removing guides leaves. `None` without the spread.
+fn kept_guides(d: &designcraft_doc::Document, r: designcraft_doc::SpreadRef) -> Option<Vec<Vec<bool>>> {
+    Some(d.spread(r)?.pages.iter().map(|pg| pg.guides.iter().map(|g| !g.editable_in(d)).collect()).collect())
+}
+
+/// Remove the guides `keep` doesn't mark; returns how many went.
+fn remove_guides(guides: &mut Vec<Guide>, keep: &[bool]) -> usize {
+    let before = guides.len();
+    let mut keep = keep.iter();
+    guides.retain(|_| keep.next().copied().unwrap_or(false));
+    before - guides.len()
 }
 
 #[cfg(test)]
@@ -439,6 +459,28 @@ mod layer_tests {
         s.execute("layer.set", &json!({"id": layer, "lockGuides": false})).unwrap();
         s.execute("guide.move", &json!({"page": 0, "index": 0, "position": 200})).unwrap();
         assert_eq!(s.execute("guide.list", &json!({})).unwrap()[0]["position"], 200.0);
+    }
+
+    #[test]
+    fn delete_all_and_remove_existing_keep_locked_guides() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let grid = s.execute("layer.new", &json!({"name": "Grid"})).unwrap()["id"].as_u64().unwrap();
+        s.execute("layer.activate", &json!({"id": grid})).unwrap();
+        s.execute("guide.add", &json!({"orientation": "vertical", "position": 100})).unwrap();
+        let free = s.execute("layer.new", &json!({"name": "Free"})).unwrap()["id"].as_u64().unwrap();
+        s.execute("layer.activate", &json!({"id": free})).unwrap();
+        s.execute("guide.add", &json!({"orientation": "vertical", "position": 200})).unwrap();
+        s.execute("layer.set", &json!({"id": grid, "lockGuides": true})).unwrap();
+        let positions = |s: &mut Session| {
+            s.execute("guide.list", &json!({})).unwrap().as_array().unwrap().iter().map(|g| g["position"].as_f64().unwrap()).collect::<Vec<_>>()
+        };
+        assert_eq!(s.execute("guide.deleteAll", &json!({})).unwrap()["deleted"], 1);
+        assert_eq!(positions(&mut s), [100.0], "the locked layer's guide stays");
+        s.execute("guide.add", &json!({"orientation": "vertical", "position": 200})).unwrap();
+        s.execute("layout.createGuides", &json!({"columns": 2, "removeExisting": true, "page": 0})).unwrap();
+        let after = positions(&mut s);
+        assert!(after.contains(&100.0) && !after.contains(&200.0), "{after:?}");
     }
 
     #[test]
