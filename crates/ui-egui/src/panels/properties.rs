@@ -870,12 +870,20 @@ fn appearance_section(app: &mut DesignApp, ui: &mut Ui, i: &SelInfo) {
 }
 
 /// The effects applied to the selection's first object, as Effects dialog pages, in the
-/// dialog's order; and whether its transparency is other than plain (for Clear All
-/// Transparency).
-fn applied_effects(app: &DesignApp) -> (Vec<&'static str>, bool) {
-    let Some(it) = app.session.active().and_then(|st| st.selection.items.first().and_then(|id| st.doc.item(*id)).cloned()) else {
-        return (Vec::new(), false);
-    };
+/// dialog's order (for the link beside the button); and, over every selected object, whether
+/// any has an effect (Clear Effects) and whether any has transparency other than plain (Clear
+/// All Transparency).
+fn applied_effects(app: &DesignApp) -> (Vec<&'static str>, bool, bool) {
+    let Some(st) = app.session.active() else { return (Vec::new(), false, false) };
+    let items: Vec<&designcraft_doc::Item> = st.selection.items.iter().filter_map(|id| st.doc.item(*id)).collect();
+    let pages = items.first().map(|it| effect_pages(it)).unwrap_or_default();
+    let any_effect = items.iter().any(|it| !effect_pages(it).is_empty());
+    let transparent = any_effect || items.iter().any(|it| it.opacity < 1.0 || it.blend != designcraft_color::BlendMode::Normal);
+    (pages, any_effect, transparent)
+}
+
+/// The Effects dialog pages of the effects `it` has on, in the dialog's order.
+fn effect_pages(it: &designcraft_doc::Item) -> Vec<&'static str> {
     let fx = &it.effects;
     let on = [
         ("dropShadow", fx.drop_shadow.on),
@@ -888,9 +896,7 @@ fn applied_effects(app: &DesignApp) -> (Vec<&'static str>, bool) {
         ("directionalFeather", fx.directional_feather.on),
         ("gradientFeather", fx.gradient_feather.on),
     ];
-    let pages: Vec<&'static str> = on.iter().filter(|(_, on)| *on).map(|(p, _)| *p).collect();
-    let transparent = !pages.is_empty() || it.opacity < 1.0 || it.blend != designcraft_color::BlendMode::Normal;
-    (pages, transparent)
+    on.iter().filter(|(_, on)| *on).map(|(p, _)| *p).collect()
 }
 
 /// Properties › Appearance › fx, as InDesign's: a menu of the effects (each opens the Effects
@@ -898,7 +904,7 @@ fn applied_effects(app: &DesignApp) -> (Vec<&'static str>, bool) {
 /// first effect applied, a link to it in the dialog.
 fn effects_button(app: &mut DesignApp, ui: &mut Ui) {
     let lang = app.ui.language.clone();
-    let (applied, transparent) = applied_effects(app);
+    let (applied, any_effect, transparent) = applied_effects(app);
     let fx = icon_toggle(ui, "fx", !applied.is_empty(), crate::i18n::tr(&lang, "Effects"));
     let mut page = None;
     let mut clear = None;
@@ -915,7 +921,7 @@ fn effects_button(app: &mut DesignApp, ui: &mut Ui) {
             }
         }
         ui.separator();
-        if ui.add_enabled(!applied.is_empty(), egui::Button::new(crate::rtl::widget(ui, crate::i18n::tr(&lang, "Clear Effects")))).clicked() {
+        if ui.add_enabled(any_effect, egui::Button::new(crate::rtl::widget(ui, crate::i18n::tr(&lang, "Clear Effects")))).clicked() {
             clear = Some(false);
             ui.close();
         }
@@ -3587,6 +3593,21 @@ mod effects_panel_tests {
                 ],
             );
         }
+    }
+
+    #[test]
+    fn clear_actions_look_at_every_selected_object() {
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), Default::default());
+        app.run("file.new", json!({})).unwrap();
+        let plain = app.run("frame.create", json!({"rect": [0, 0, 50, 50]})).unwrap()["id"].as_u64().unwrap();
+        let fx = app.run("frame.create", json!({"rect": [60, 0, 110, 50]})).unwrap()["id"].as_u64().unwrap();
+        app.run("object.effects", json!({"ids": [fx], "effects": {"feather": 4}})).unwrap();
+        app.run("selection.set", json!({"ids": [plain, fx]})).unwrap();
+        let (pages, any_effect, transparent) = applied_effects(&app);
+        assert!(pages.is_empty(), "the link names the first object's effect");
+        assert!(any_effect && transparent, "Clear Effects and Clear All Transparency stay available");
+        app.run("object.effects", json!({"ids": [fx], "effects": {"feather": 0}, "opacity": 0.5})).unwrap();
+        assert_eq!(applied_effects(&app), (Vec::new(), false, true));
     }
 
     #[test]

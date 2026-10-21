@@ -601,8 +601,9 @@ pub fn specs() -> Vec<CommandSpec> {
                 s.edit(|d, _| {
                     let mut changed = 0;
                     for id in &ids {
-                        // Locked objects keep their effects, as with `object.effects`.
-                        if !d.item(*id).is_some_and(|it| unlocked(d, it)) {
+                        // Locked objects (or ones in a locked group, or on a locked layer) keep
+                        // their effects, as with `object.effects`.
+                        if path_editable(d, *id, "object.clearEffects").is_err() {
                             continue;
                         }
                         let Some(it) = d.item_mut(*id) else { continue };
@@ -5627,5 +5628,19 @@ mod clear_effects_tests {
         let it = item(&s);
         assert!(it.effects.any());
         assert_eq!((it.opacity, it.blend), (0.5, designcraft_color::BlendMode::Multiply));
+    }
+
+    #[test]
+    fn a_child_of_a_locked_group_keeps_its_effects() {
+        let mut s = crate::Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let a = s.execute("frame.create", &json!({"rect": [0, 0, 50, 50]})).unwrap()["id"].as_u64().unwrap();
+        let b = s.execute("frame.create", &json!({"rect": [60, 0, 110, 50]})).unwrap()["id"].as_u64().unwrap();
+        s.execute("object.effects", &json!({"ids": [a], "effects": {"feather": 4}})).unwrap();
+        let g = s.execute("object.group", &json!({"ids": [a, b]})).unwrap()["id"].as_u64().unwrap();
+        s.execute("object.lock", &json!({"ids": [g]})).unwrap();
+        let r = s.execute("object.clearEffects", &json!({"ids": [a]})).unwrap();
+        assert_eq!(r["changed"], 0);
+        assert!(s.doc().unwrap().doc.item(designcraft_doc::ItemId(a)).unwrap().effects.any());
     }
 }
