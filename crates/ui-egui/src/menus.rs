@@ -1037,7 +1037,7 @@ fn run_ui_inner(app: &mut DesignApp, id: &str, p: &Value) -> Option<Result<Value
             app.open_named_file("file.openRecent", json!({"index": index}), name)
         }
         "app.contactSheetDialog" => {
-            app.ui.dialog = Some(crate::dialogs::Dialog::new("contactSheet", json!({})));
+            crate::dialogs::open_contact_sheet(app);
             Ok(Value::Null)
         }
         "app.placeDialog" => app.pick_and_open("place"),

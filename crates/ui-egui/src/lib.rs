@@ -1012,6 +1012,12 @@ impl DesignApp {
 
     /// Open the import options needed by a single local file.
     fn place_path(&mut self, path: &str) -> Result<Value, String> {
+        self.place_path_with(path, false)
+    }
+
+    /// [`Self::place_path`]; with `append`, an image that loads the cursor queues after the ones
+    /// already loaded rather than replacing them.
+    fn place_path_with(&mut self, path: &str, append: bool) -> Result<Value, String> {
         if path.to_ascii_lowercase().ends_with(".pdf") {
             let pages = self.services.read.as_mut().and_then(|r| r(path).ok()).and_then(|b| designcraft_render::pdf_page_count(&b)).unwrap_or(1);
             if pages > 1 {
@@ -1022,22 +1028,34 @@ impl DesignApp {
                 return Ok(Value::Null);
             }
         }
-        self.place_file(json!({"path": path}))
+        self.place_file(if append { json!({"path": path, "append": true}) } else { json!({"path": path}) })
     }
 
-    /// Load an ordered batch, retaining single-file import dialogs where needed.
+    /// Load an ordered batch, retaining single-file import dialogs where needed. The batch stops
+    /// when a file opens a dialog (a multi-page PDF's Import Options, an alert), as the inbox's
+    /// does; every file that loads the cursor adds to what the earlier ones loaded.
     fn place_paths(&mut self, paths: Vec<String>) {
         let mut images = Vec::new();
+        let mut loaded = false;
         for path in paths {
-            let image = is_cursor_image(&path);
-            if image {
+            if is_cursor_image(&path) {
                 images.push(json!({"path": path}));
-            } else {
-                let _ = self.place_path(&path);
+                continue;
+            }
+            if self.ui.dialog.is_some() {
+                self.status(crate::i18n::tr(&self.ui.language, "Place cancelled while a dialog is open"));
+                return;
+            }
+            if let Ok(r) = self.place_path_with(&path, loaded) {
+                loaded |= r.get("loaded").and_then(Value::as_bool) == Some(true);
             }
         }
         if !images.is_empty() {
-            let _ = self.run("place.load", json!({"files": images}));
+            if self.ui.dialog.is_some() {
+                self.status(crate::i18n::tr(&self.ui.language, "Place cancelled while a dialog is open"));
+                return;
+            }
+            let _ = self.run("place.load", json!({"files": images, "append": loaded}));
         }
     }
 
@@ -2960,6 +2978,35 @@ mod browser_import_tests {
         assert_eq!(app.ui.status, "Bildimport bei geöffnetem Dialog abgebrochen");
         assert!(app.ui.dialog.is_some());
         assert!(app.session.loaded.is_none());
+    }
+
+    #[test]
+    fn native_batch_stops_when_a_dialog_is_open_and_appends_to_the_cursor() {
+        let mut app = app();
+        app.ui.dialog = Some(dialogs::Dialog::new("alert", json!({"title": "t", "message": "m"})));
+        app.place_paths(vec!["one.pdf".into(), "two.png".into()]);
+        assert_eq!(app.ui.status, "Place cancelled while a dialog is open");
+        assert!(app.session.loaded.is_none());
+        app.ui.dialog = None;
+        let b64 = designcraft_engine::cmd::base64_encode(&image());
+        app.run("place.load", json!({"base64": b64, "name": "a.svg"})).unwrap();
+        let first = app.session.loaded.as_ref().unwrap().asset;
+        let files = json!([{"base64": b64, "name": "b.svg"}, {"base64": b64, "name": "c.svg"}]);
+        app.run("place.load", json!({"files": files, "append": true})).unwrap();
+        assert_eq!(app.session.loaded.as_ref().unwrap().asset, first);
+        assert_eq!(app.session.loaded_queue.len(), 2);
+        app.run("place.load", json!({"files": files})).unwrap();
+        assert_eq!(app.session.loaded_queue.len(), 1);
+    }
+
+    #[test]
+    fn contact_sheet_measures_use_the_document_unit() {
+        let mut app = app();
+        app.run("document.preferences", json!({"horizontalUnits": "millimeters"})).unwrap();
+        app.run("app.contactSheetDialog", json!({})).unwrap();
+        let d = app.ui.dialog.as_ref().unwrap();
+        assert_eq!(d.unit, Unit::Millimeters);
+        assert_eq!(d.s("gutter"), "6pt");
     }
 
     #[test]

@@ -46,6 +46,16 @@ const TABLE: &[(&str, [&str; 5])] = &[
             "对话框打开时已取消图像导入",
         ],
     ),
+    (
+        "Place cancelled while a dialog is open",
+        [
+            "Platzieren bei geöffnetem Dialog abgebrochen",
+            "Importation annulée car une boîte de dialogue est ouverte",
+            "Colocación cancelada mientras hay un diálogo abierto",
+            "ダイアログが開いているため配置をキャンセルしました",
+            "对话框打开时已取消置入",
+        ],
+    ),
     // Menus.
     ("File", ["Datei", "Fichier", "Archivo", "ファイル", "文件"]),
     ("Edit", ["Bearbeiten", "Édition", "Edición", "編集", "编辑"]),

@@ -870,6 +870,14 @@ fn doc_unit(app: &DesignApp) -> Unit {
     app.session.active().map(|s| s.doc.settings.horizontal_units).unwrap_or(Unit::Picas)
 }
 
+/// File › Place Contact Sheet…: bare numbers typed in the dialog are in the document's ruler unit
+/// (the defaults keep their explicit `pt`).
+pub fn open_contact_sheet(app: &mut DesignApp) {
+    let mut d = Dialog::new("contactSheet", json!({}));
+    d.unit = doc_unit(app);
+    app.ui.dialog = Some(d);
+}
+
 /// Layout › Create Guides…: guides go on the page in view (or the parent page being edited), not
 /// on the first page, and the gutters are typed in the document's ruler unit.
 pub fn open_create_guides(app: &mut DesignApp) {

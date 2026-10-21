@@ -125,7 +125,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Load Place Cursor",
             [],
             None,
-            "{path | base64, name?, files?: [{path | base64, name?}]} — load up to 1000 images in order",
+            "{path | base64, name?, files?: [{path | base64, name?}], append? (keep the images already loaded and queue these after them)} — load up to 1000 images in order",
             has_doc,
             place_load
         ),
@@ -159,7 +159,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Place…",
             ["File"],
             Some("Cmd+D"),
-            "{path?|base64?, name?, frame?: id (place into), spread?, x?, y?, width?: finite number > 0 (null: absent), height? (video/audio), pdfPage?: n (1-based, Image Import Options), pdfCrop?: crop|art|trim|bleed|media|contentVisible|contentAll (the box the graphic shows; `width` is the whole page's), loadCursor? (with no frame to fill and no x/y, an image loads into the place cursor, as File › Place), layoutPage?: n (IDML / .designcraft: that page's objects as a group), page?, rect?: [x0,y0,x1,y1] (text: a new frame there), autoflow? (threads one frame per page column from the first frame on, adding pages until the text fits), removeStyles?, styleMap?: {imported name: document style}, styleConflicts?: useExisting|redefine|autoRename, link? (keep the file linked in the Links panel; default: the linkTextFiles preference)} — places an image into `frame` when given; otherwise any explicit x/y/spread/width creates a new frame; otherwise uses the selected empty or graphic frame, or creates a new frame; text files (.txt, .docx, .rtf, .md) and Excel workbooks (.xlsx, as a table) go into the insertion point, the selected frame or a new frame on `page`/`rect`",
+            "{path?|base64?, name?, frame?: id (place into), spread?, x?, y?, width?: finite number > 0 (null: absent), height? (video/audio), pdfPage?: n (1-based, Image Import Options), pdfCrop?: crop|art|trim|bleed|media|contentVisible|contentAll (the box the graphic shows; `width` is the whole page's), loadCursor? (with no frame to fill and no x/y, an image loads into the place cursor, as File › Place), append? (with loadCursor: queue the image after those already loaded instead of replacing them), layoutPage?: n (IDML / .designcraft: that page's objects as a group), page?, rect?: [x0,y0,x1,y1] (text: a new frame there), autoflow? (threads one frame per page column from the first frame on, adding pages until the text fits), removeStyles?, styleMap?: {imported name: document style}, styleConflicts?: useExisting|redefine|autoRename, link? (keep the file linked in the Links panel; default: the linkTextFiles preference)} — places an image into `frame` when given; otherwise any explicit x/y/spread/width creates a new frame; otherwise uses the selected empty or graphic frame, or creates a new frame; text files (.txt, .docx, .rtf, .md) and Excel workbooks (.xlsx, as a table) go into the insertion point, the selected frame or a new frame on `page`/`rect`",
             has_doc,
             file_place
         ),
@@ -705,7 +705,7 @@ fn file_place(s: &mut Session, p: &Value) -> Result<Value> {
     let px = p.get("x").and_then(Value::as_f64);
     let py = p.get("y").and_then(Value::as_f64);
     if target_frame.is_none() && px.is_none() && py.is_none() && p.get("loadCursor").and_then(Value::as_bool) == Some(true) {
-        return load_cursor(s, asset, (bw, bh));
+        return load_cursor(s, asset, (bw, bh), p.get("append").and_then(Value::as_bool) == Some(true));
     }
     s.edit(|d, sel| {
         let fresh = AssetId(d.alloc());
@@ -873,7 +873,7 @@ fn place_load(s: &mut Session, p: &Value) -> Result<Value> {
             pixels: Some((pw, ph)),
             ..Default::default()
         };
-        return load_cursor(s, asset, natural);
+        return load_cursor(s, asset, natural, p.get("append").and_then(Value::as_bool) == Some(true));
     }
     let sources = p.get("files").and_then(Value::as_array).ok_or_else(|| bad("place.load", "files must be an array"))?;
     if sources.is_empty() || sources.len() > 1000 {
@@ -905,22 +905,32 @@ fn place_load(s: &mut Session, p: &Value) -> Result<Value> {
         }
         Ok(queue)
     })?;
-    s.loaded_queue = queue;
-    s.loaded = s.loaded_queue.pop_front();
+    if p.get("append").and_then(Value::as_bool) == Some(true) && s.loaded.is_some() {
+        s.loaded_queue.extend(queue);
+    } else {
+        s.loaded_queue = queue;
+        s.loaded = s.loaded_queue.pop_front();
+    }
     s.set_tool("placeGun");
     Ok(json!({"remaining": s.loaded_queue.len() + 1, "loaded": true}))
 }
 
-/// Add a decoded asset with a fresh id, replacing the previous placement queue.
-fn load_cursor(s: &mut Session, mut asset: Asset, size: (f64, f64)) -> Result<Value> {
+/// Add a decoded asset with a fresh id, replacing the previous placement queue (or, with
+/// `append` and an image already loaded, queued after it).
+fn load_cursor(s: &mut Session, mut asset: Asset, size: (f64, f64), append: bool) -> Result<Value> {
     let name = asset.name.clone();
     let (pw, ph) = asset.pixels.unwrap_or_default();
     let aid = s.edit(|d, _| {
         asset.id = AssetId(d.alloc());
         Ok(d.add_asset(asset))
     })?;
-    s.loaded_queue.clear();
-    s.loaded = Some(crate::LoadedGraphic { asset: aid, size });
+    let image = crate::LoadedGraphic { asset: aid, size };
+    if append && s.loaded.is_some() {
+        s.loaded_queue.push_back(image);
+    } else {
+        s.loaded_queue.clear();
+        s.loaded = Some(image);
+    }
     s.set_tool("placeGun");
     Ok(json!({"asset": aid.0, "name": name, "width": pw, "height": ph, "loaded": true}))
 }

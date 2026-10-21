@@ -5,6 +5,7 @@
 //! the code or the command table use.
 pub(super) const TABLE: &[(&str, &str)] = &[
     ("Image import cancelled while a dialog is open", "გამოსახულებების იმპორტი გაუქმდა, რადგან დიალოგი გახსნილია"),
+    ("Place cancelled while a dialog is open", "განთავსება გაუქმდა, რადგან დიალოგი ღიაა"),
     ("File", "ფაილი"),
     ("Edit", "რედაქტირება"),
     ("Layout", "განლაგება"),
