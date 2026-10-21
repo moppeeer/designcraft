@@ -661,6 +661,7 @@ pub fn import_with(bytes: &[u8], opts: &designcraft_doc::TextImportOptions) -> R
     let body = doc.child("body").ok_or_else(|| ImportError::Corrupt("no document body".into()))?;
     let mut st = Story::new(StoryId(0));
     ctx.blocks(body, &mut st, true);
+    crate::page_breaks(&mut st, opts.page_breaks);
     // A page or column break ends its paragraph.
     st.end_paragraphs_at_breaks();
     // Only styles that are used, plus what they are based on.
@@ -897,8 +898,17 @@ mod tests {
         st.check().unwrap();
         let (pb, cb) = (designcraft_doc::PAGE_BREAK, designcraft_doc::COLUMN_BREAK);
         assert_eq!(st.text, format!("End of one{pb}\n{pb}\nTwo{cb}\n"));
-        let styles: Vec<&str> = st.paras.iter().map(|p| p.style.as_str()).collect();
-        assert_eq!(styles, [BASIC_PARAGRAPH, "Chapter", "Chapter", "Chapter"]);
+        let names: Vec<&str> = st.paras.iter().map(|p| p.style.as_str()).collect();
+        assert_eq!(names, [BASIC_PARAGRAPH, "Chapter", "Chapter", "Chapter"]);
+        // No Breaks: the breaks go before they end paragraphs, so a paragraph that started with
+        // one stays a single paragraph; Column Break: column breaks, ending their paragraphs.
+        let with = |page_breaks| {
+            import_with(&docx(&document, &styles, ""), &designcraft_doc::TextImportOptions { page_breaks, ..Default::default() }).unwrap().story
+        };
+        let st = with(designcraft_doc::PageBreakImport::None);
+        st.check().unwrap();
+        assert_eq!(st.text, format!("End of one\nTwo{cb}\n"));
+        assert_eq!(with(designcraft_doc::PageBreakImport::Column).text, format!("End of one{cb}\n{cb}\nTwo{cb}\n"));
     }
 
     /// A paragraph in a Word list: `w:numPr` with `numId` and, unless `None`, `ilvl`.

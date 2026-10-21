@@ -90,6 +90,22 @@ impl std::fmt::Display for ImportError {
     }
 }
 
+/// Word/RTF Import Options › Manual Page Breaks, applied before the breaks end their paragraphs:
+/// No Breaks removes them (text either side of one inside a paragraph stays one paragraph, as in
+/// InDesign), Column Break turns them into column breaks.
+pub(crate) fn page_breaks(st: &mut designcraft_doc::Story, to: designcraft_doc::PageBreakImport) {
+    let to = match to {
+        designcraft_doc::PageBreakImport::Preserve => return,
+        designcraft_doc::PageBreakImport::Column => designcraft_doc::COLUMN_BREAK.to_string(),
+        designcraft_doc::PageBreakImport::None => String::new(),
+    };
+    let pb = designcraft_doc::PAGE_BREAK;
+    let at: Vec<usize> = st.text.match_indices(pb).map(|(i, _)| i).collect();
+    for i in at.into_iter().rev() {
+        st.replace(i..i + pb.len_utf8(), &to);
+    }
+}
+
 /// Text files this crate reads, by extension.
 pub fn is_text_file(name: &str) -> bool {
     let l = name.to_ascii_lowercase();
@@ -102,7 +118,8 @@ pub fn import(name: &str, bytes: &[u8]) -> Result<Imported, ImportError> {
 }
 
 /// [`import`] with the Word Import Options that apply while reading the file: Table of Contents
-/// and Index text, footnotes, endnotes and unused styles (Word documents).
+/// and Index text, footnotes, endnotes, manual page breaks and unused styles (Word documents;
+/// footnotes, endnotes and page breaks for RTF too).
 pub fn import_with(name: &str, bytes: &[u8], opts: &designcraft_doc::TextImportOptions) -> Result<Imported, ImportError> {
     let l = name.to_ascii_lowercase();
     if l.ends_with(".xlsx") {
@@ -112,7 +129,7 @@ pub fn import_with(name: &str, bytes: &[u8], opts: &designcraft_doc::TextImportO
         return docx::import_with(bytes, opts);
     }
     if l.ends_with(".rtf") || bytes.starts_with(b"{\\rtf") {
-        return rtf::import(bytes);
+        return rtf::import_with(bytes, opts);
     }
     if tagged::is_tagged(bytes) {
         return tagged::import(bytes);

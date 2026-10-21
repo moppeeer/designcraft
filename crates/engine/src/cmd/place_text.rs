@@ -147,7 +147,8 @@ fn import_options(p: &Value) -> Result<designcraft_doc::TextImportOptions> {
 }
 
 /// The options that change the imported text before it lands: styles removed (keeping local
-/// overrides when asked), tables as tabbed text, manual page breaks and typographer's quotes.
+/// overrides when asked), tables as tabbed text and typographer's quotes. (Manual page breaks
+/// are the importer's: see `designcraft_textimport::import_with`.)
 fn convert(imp: &mut designcraft_textimport::Imported, remove: bool, o: &designcraft_doc::TextImportOptions) {
     let st = &mut imp.story;
     if remove {
@@ -161,18 +162,6 @@ fn convert(imp: &mut designcraft_textimport::Imported, remove: bool, o: &designc
         for (a, id) in anchors.into_iter().rev() {
             let text = st.tables.get(&id).map(|t| t.plain_text()).unwrap_or_default();
             st.replace(a..a + designcraft_doc::TABLE_ANCHOR.len_utf8(), &text);
-        }
-    }
-    let page_break = designcraft_doc::PAGE_BREAK;
-    let to = match o.page_breaks {
-        designcraft_doc::PageBreakImport::Preserve => None,
-        designcraft_doc::PageBreakImport::Column => Some(designcraft_doc::COLUMN_BREAK.to_string()),
-        designcraft_doc::PageBreakImport::None => Some(String::new()),
-    };
-    if let Some(to) = to {
-        let at: Vec<usize> = st.text.match_indices(page_break).map(|(i, _)| i).collect();
-        for i in at.into_iter().rev() {
-            st.replace(i..i + page_break.len_utf8(), &to);
         }
     }
     if o.typographers_quotes {
@@ -201,8 +190,10 @@ fn curl_quotes(st: &mut Story) {
 }
 
 /// Convert Bullets & Numbers to Text: each list paragraph's bullet or number becomes text at its
-/// start, and the paragraph is no longer in a list.
-fn lists_to_text(d: &mut Document, sid: StoryId) {
+/// start, and the paragraph is no longer in a list. With `only` (text placed at an insertion
+/// point), just the paragraphs that hold some of that range; the numbering still counts the
+/// paragraphs before it.
+fn lists_to_text(d: &mut Document, sid: StoryId, only: Option<std::ops::Range<usize>>) {
     let Some(st) = d.story(sid) else { return };
     let mut counter = designcraft_doc::ListCounter::default();
     let mut labels = Vec::new();
@@ -221,7 +212,9 @@ fn lists_to_text(d: &mut Document, sid: StoryId) {
                 None
             }
         };
-        if let Some(l) = label {
+        if let Some(l) = label
+            && only.as_ref().is_none_or(|o| r.start < o.end && r.end >= o.start)
+        {
             labels.push((i, r.start, l));
         }
     }
@@ -293,7 +286,7 @@ pub(crate) fn reimport(
     let story = d.story_mut(sid).ok_or(designcraft_doc::DocError::NoStory(sid))?;
     fill(story, &imp.story);
     if link.options.bullets_to_text {
-        lists_to_text(d, sid);
+        lists_to_text(d, sid, None);
     }
     let story = d.story_mut(sid).ok_or(designcraft_doc::DocError::NoStory(sid))?;
     story.file_link = Some(text_link(path, bytes, before, map, conflict, link.remove_styles, &link.options, story));
@@ -477,6 +470,8 @@ pub(super) fn place_text(
     }
     s.edit(|d, sel| {
         add_styles(d, &imp, conflict);
+        // The placed text's range when it went into existing text.
+        let mut inserted = None;
         let sid = if let Some(t) = caret {
             // Into the text at the insertion point (replacing the selection).
             let story = d.story_mut(t.story).ok_or(designcraft_doc::DocError::NoStory(t.story))?;
@@ -487,6 +482,7 @@ pub(super) fn place_text(
             let p0 = story.para_at(r.start);
             let blank = story.para_ranges().get(p0).is_some_and(|x| x.is_empty());
             let end = story.insert_story(r.start, &imp.story);
+            inserted = Some(r.start..end);
             if blank && let (Some(first), Some(p)) = (imp.story.paras.first(), story.paras.get_mut(p0)) {
                 *p = ParaFormat { table: p.table, ..first.clone() };
             }
@@ -531,7 +527,7 @@ pub(super) fn place_text(
             sid
         };
         if opts.bullets_to_text {
-            lists_to_text(d, sid);
+            lists_to_text(d, sid, inserted);
         }
         let pages = if autoflow_on { autoflow(d, sid, 2000, "file.place", false)? } else { 0 };
         let overset = fit(d, sid).0.is_some();
@@ -574,7 +570,7 @@ mod tests {
         let sid = StoryId(d.alloc());
         st.id = sid;
         d.stories.insert(sid, std::sync::Arc::new(st));
-        lists_to_text(&mut d, sid);
+        lists_to_text(&mut d, sid, None);
         let st = d.story(sid).unwrap();
         assert!(st.text.starts_with("1.") && st.text.contains("\n2."), "{:?}", st.text);
         assert!(st.paras.iter().all(|p| p.para.list_type == Some(designcraft_doc::ListType::None)));
@@ -583,6 +579,30 @@ mod tests {
         imp.story.insert_table(0, t);
         convert(&mut imp, false, &designcraft_doc::TextImportOptions { tables_as_tabbed_text: true, ..Default::default() });
         assert!(imp.story.tables.is_empty() && imp.story.text.contains("a\tb"), "{:?}", imp.story.text);
+    }
+
+    /// Convert Bullets & Numbers to Text at an insertion point touches only the placed text: the
+    /// story's own list paragraphs stay in their list.
+    #[test]
+    fn bullets_to_text_at_an_insertion_point_leaves_the_storys_lists() {
+        let dir = std::env::temp_dir().join(format!("dc-word-lists-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("more.txt");
+        std::fs::write(&path, "New").unwrap();
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let f = s.execute("frame.create", &json!({"rect": [72, 72, 400, 300], "content": "text", "text": "One\nTwo\n"})).unwrap();
+        let sid = StoryId(f["story"].as_u64().unwrap());
+        {
+            let doc = std::sync::Arc::make_mut(&mut s.doc_mut().unwrap().doc);
+            let st = std::sync::Arc::make_mut(doc.stories.get_mut(&sid).unwrap());
+            st.format_paras(0..7, |p| p.para.list_type = Some(designcraft_doc::ListType::Numbers));
+        }
+        s.execute("text.select", &json!({"story": sid.0, "anchor": 8, "focus": 8})).unwrap();
+        s.execute("file.place", &json!({"path": path.to_string_lossy(), "word": {"bulletsToText": true}})).unwrap();
+        let st = s.doc().unwrap().doc.story(sid).unwrap().clone();
+        assert_eq!(st.text, "One\nTwo\nNew");
+        assert!(st.paras[..2].iter().all(|p| p.para.list_type == Some(designcraft_doc::ListType::Numbers)), "{:?}", st.paras);
     }
 
     #[test]
