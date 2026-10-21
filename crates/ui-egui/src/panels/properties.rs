@@ -1181,7 +1181,7 @@ fn image_actions(app: &mut DesignApp, ui: &mut Ui, hw: f32) {
 /// the image and document formats File › Place takes; to reveal, a name Explorer's `/select,`
 /// argument can't be broken out of. The error is the status line's message (untranslated).
 fn openable(file: &std::path::Path, reveal: bool) -> Result<(), &'static str> {
-    if !file.is_file() {
+    if !designcraft_engine::io::is_file(file) {
         return Err("The link isn't a file on this computer");
     }
     let name = file.to_string_lossy();
