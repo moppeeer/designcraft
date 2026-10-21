@@ -1189,6 +1189,8 @@ fn link_statuses(app: &mut DesignApp, ctx: &egui::Context, doc: &Document) -> st
     let Some(st) = app.session.active() else { return Default::default() };
     let (uid, revision) = (st.uid, st.revision);
     let now = ctx.input(|i| i.time);
+    // An idle canvas still draws again when the check is due, so a file changed on disk shows.
+    ctx.request_repaint_after(std::time::Duration::from_secs(1));
     let id = egui::Id::new(("link_badge_status", app.pane));
     if let Some((u, r, at, map)) = ctx.data(|d| d.get_temp::<Cached>(id))
         && (u, r) == (uid, revision)
@@ -1230,15 +1232,21 @@ fn link_badges(doc: &Document, layout: &CanvasLayout, xf: &Xf, status: &std::col
                 if doc.assets.get(&g.asset).is_none_or(|asset| asset.link.is_none()) {
                     return;
                 }
-                let pts: Vec<Pos2> = path_screen(it, xf, a).into_iter().flatten().collect();
-                let Some(first) = pts.first() else { return };
-                let r = pts.iter().fold(Rect::from_min_max(*first, *first), |r, p| r.union(Rect::from_min_max(*p, *p)));
+                // On the frame's own top edge (rotated with it), 16 px in from its left corner.
+                let b = it.inner_bounds();
+                let m = a * it.xf;
+                let (tl, tr) = (xf.to_screen(m * Point::new(b.x0, b.y0)), xf.to_screen(m * Point::new(b.x1, b.y0)));
+                let len = (tr - tl).length();
+                if !len.is_finite() {
+                    return;
+                }
+                let at = if len > 0.0 { tl + (tr - tl) / len * 16.0f32.min(len / 2.0) } else { tl };
                 let badge = match status.get(&g.asset.0).map(String::as_str) {
                     Some("missing") => LinkBadge::Missing,
                     Some("modified") => LinkBadge::Modified,
                     _ => LinkBadge::Linked,
                 };
-                out.push((pos2((r.left() + 16.0).min(r.center().x), r.top()), badge, layer_color(doc, it)));
+                out.push((at, badge, layer_color(doc, it)));
             }
             _ => {}
         }
@@ -1246,6 +1254,20 @@ fn link_badges(doc: &Document, layout: &CanvasLayout, xf: &Xf, status: &std::col
     let mut out = Vec::new();
     for slot in &layout.slots {
         let Some(sp) = doc.spread(slot.spread) else { continue };
+        // Parent items shown on the pages (not those a page overrides), as draw_frames finds them.
+        for (pi, page) in sp.pages.iter().enumerate() {
+            for (ppi, ppg) in doc.shown_parent_pages(slot.spread, pi) {
+                let Some(parent) = doc.parents.get(ppi) else { continue };
+                let Some(ppage) = parent.pages.get(ppg) else { continue };
+                let dx = page.x - ppage.x;
+                for it in &parent.items {
+                    if (parent.pages.len() > 1 && parent.page_at_x(it.bounds().center().x) != Some(ppg)) || page.overridden.contains(&it.id) {
+                        continue;
+                    }
+                    walk(doc, xf, it, slot.xf * Affine::translate((dx, 0.0)), status, &mut out);
+                }
+            }
+        }
         for it in &sp.items {
             walk(doc, xf, it, slot.xf, status, &mut out);
         }
@@ -3229,6 +3251,27 @@ mod tests {
         let corner = xf.to_screen(a * Point::new(r.x0, r.y0));
         let d = b[0].0 - corner;
         assert!(d.y.abs() < 0.5 && d.x > 0.0 && d.x <= 16.5, "on the top edge near the left corner: {d:?}");
+        // Rotated, the badge stays on the frame's own top edge, 16 px from its corner along it.
+        app.run("transform.set", json!({"ids": [linked], "rotation": 30})).unwrap();
+        let doc = app.session.active().unwrap().doc.clone();
+        let it = doc.item(designcraft_doc::ItemId(linked)).unwrap().clone();
+        let (a, _) = item_canvas_xf(&doc, &CanvasLayout::new(&doc, false), designcraft_doc::ItemId(linked)).unwrap();
+        let ib = it.inner_bounds();
+        let (tl, tr) = (xf.to_screen(a * it.xf * Point::new(ib.x0, ib.y0)), xf.to_screen(a * it.xf * Point::new(ib.x1, ib.y0)));
+        let c = badges(&mut app)[0].0;
+        let along = (tr - tl).normalized();
+        let off = c - tl;
+        assert!((off.dot(along) - 16.0).abs() < 0.5 && (off.x * along.y - off.y * along.x).abs() < 0.5, "on the rotated top edge: {off:?}");
+        app.run("edit.undo", json!({})).unwrap();
+        // A linked picture on the parent page shows its badge on the document page that shows it
+        // (the first page is a right-hand one: the parent's right page).
+        let px = app.session.active().unwrap().doc.parents[0].pages[1].x;
+        let pf =
+            app.run("frame.create", json!({"rect": [px + 300.0, 500, px + 400.0, 600], "spread": {"kind": "parent", "index": 0}})).unwrap()["id"]
+                .as_u64()
+                .unwrap();
+        app.run("file.place", json!({"path": path.to_string_lossy(), "frame": pf})).unwrap();
+        assert_eq!(badges(&mut app).len(), 2, "the parent page's picture too");
         // The file gone: the badge says so (the check runs again once the document changes).
         std::fs::remove_file(&path).unwrap();
         app.run("frame.create", json!({"rect": [400, 400, 420, 420]})).unwrap();
