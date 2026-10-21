@@ -271,7 +271,8 @@ pub(crate) fn iconic_group(app: &DesignApp, panel: &str) -> Vec<String> {
 fn float_group(app: &mut DesignApp, params: &Value) -> Result<Value, String> {
     let panel = params.get("panel").and_then(Value::as_str).and_then(normalize).ok_or("panel must name a registered panel")?;
     let layout = app.ui.docking.as_ref().filter(|layout| valid(layout)).ok_or("no valid customized panel layout")?;
-    if layout.contains(&panel.to_string()) {
+    // A panel closed from a place in the dock goes back there: it isn't in the icon column.
+    if layout.contains(&panel.to_string()) || app.ui.docking_hidden.get(panel).is_some_and(|location| location.floating.is_none()) {
         return Err("panel must be in the icon column".into());
     }
     canonical_icon_groups(app)?;
@@ -414,9 +415,13 @@ fn group_targets(
     }
 }
 
-fn group_drop_layout<'a>(app: &'a DesignApp, source: &String, pointer: egui::Pos2) -> Option<&'a Layout<String>> {
+fn group_drop_layout<'a>(app: &'a DesignApp, source: &String, pointer: egui::Pos2, blocked: &[egui::Rect]) -> Option<&'a Layout<String>> {
     let layout = app.ui.docking.as_ref().filter(|layout| valid(layout))?;
     if !pointer.is_finite() || !layout.floating.iter().any(|group| group.panels.contains(source)) {
+        return None;
+    }
+    // A dialog, the Story Editor or a panel flyout in front takes the drop, as for a single panel.
+    if blocked.iter().any(|rect| rect.contains(pointer)) {
         return None;
     }
     // Other floating windows occlude the dock. The dragged source itself must not hide its target.
@@ -429,15 +434,21 @@ fn group_drop_layout<'a>(app: &'a DesignApp, source: &String, pointer: egui::Pos
     Some(layout)
 }
 
-fn group_icon_target(app: &DesignApp, ctx: &egui::Context, source: &String, pointer: egui::Pos2) -> Option<egui::Rect> {
-    group_drop_layout(app, source, pointer)?;
+fn group_icon_target(app: &DesignApp, ctx: &egui::Context, source: &String, pointer: egui::Pos2, blocked: &[egui::Rect]) -> Option<egui::Rect> {
+    group_drop_layout(app, source, pointer, blocked)?;
     egui::containers::panel::PanelState::load(ctx, egui::Id::new("shared-panel-icons"))
         .map(|state| state.outer_rect)
         .filter(|rect| rect.is_finite() && rect.contains(pointer))
 }
 
-fn group_proposal(app: &DesignApp, ctx: &egui::Context, source: &String, pointer: egui::Pos2) -> Option<craft_ui::docking::DropProposal<String>> {
-    let layout = group_drop_layout(app, source, pointer)?;
+fn group_proposal(
+    app: &DesignApp,
+    ctx: &egui::Context,
+    source: &String,
+    pointer: egui::Pos2,
+    blocked: &[egui::Rect],
+) -> Option<craft_ui::docking::DropProposal<String>> {
+    let layout = group_drop_layout(app, source, pointer, blocked)?;
     if !app.ui.dock_expanded {
         return None;
     }
@@ -819,9 +830,9 @@ pub(crate) fn show(app: &mut DesignApp, ui: &mut egui::Ui) -> bool {
         && let Some(pointer) = ui.ctx().pointer_latest_pos()
     {
         let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Foreground, area.with("group-drop-preview")));
-        if let Some(rect) = group_icon_target(app, ui.ctx(), &source, pointer) {
+        if let Some(rect) = group_icon_target(app, ui.ctx(), &source, pointer, &blocked) {
             painter.rect(rect.shrink(1.0), 0.0, t.accent.gamma_multiply(0.15), egui::Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
-        } else if let Some(proposal) = group_proposal(app, ui.ctx(), &source, pointer) {
+        } else if let Some(proposal) = group_proposal(app, ui.ctx(), &source, pointer, &blocked) {
             painter.rect(
                 proposal.preview.shrink(1.0),
                 0.0,
@@ -835,10 +846,10 @@ pub(crate) fn show(app: &mut DesignApp, ui: &mut egui::Ui) -> bool {
         }
     }
     if let Some((source, pointer)) = output.group_drop {
-        let params = if group_icon_target(app, ui.ctx(), &source, pointer).is_some() {
+        let params = if group_icon_target(app, ui.ctx(), &source, pointer, &blocked).is_some() {
             Some(json!({"panel":source,"target":"icons"}))
         } else {
-            group_proposal(app, ui.ctx(), &source, pointer).map(|proposal| group_drop_params(&source, proposal))
+            group_proposal(app, ui.ctx(), &source, pointer, &blocked).map(|proposal| group_drop_params(&source, proposal))
         };
         if let Some(params) = params
             && let Err(error) = app.run("window.panel.dockGroup", params)

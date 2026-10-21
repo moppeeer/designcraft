@@ -153,6 +153,13 @@ fn invalid_iconic_group_requests_preserve_ownership() {
     assert!(app.run("window.panel.floatGroup", json!({"panel":"paragraphStyles","width":-1})).is_err());
     assert_eq!(app.ui.docking, collapsed);
     assert_eq!(app.ui.icon_groups, icons);
+    // A panel closed from the dock goes back there: it isn't an icon-column panel to float.
+    app.run("window.panel.close", json!({"panel":"properties"})).unwrap();
+    assert!(app.ui.docking_hidden.get("properties").is_some_and(|location| location.floating.is_none()));
+    let closed = app.ui.docking.clone();
+    assert!(app.run("window.panel.floatGroup", json!({"panel":"properties"})).is_err());
+    assert_eq!(app.ui.docking, closed);
+    assert!(app.ui.docking_hidden.contains_key("properties"));
 }
 
 #[test]
@@ -172,7 +179,10 @@ fn dragging_a_group_into_the_icon_column_opens_both_tabs_in_one_flyout() {
         h.event(Event::PointerMoved(from + (to - from) * (step as f32 / 12.0)));
         h.run_steps(1);
     }
-    assert!(group_icon_target(&h.state().app, &h.ctx, &first, to).is_some());
+    assert!(group_icon_target(&h.state().app, &h.ctx, &first, to, &[]).is_some());
+    // A surface in front (a dialog, the Story Editor, a flyout) takes the drop instead.
+    let cover = [egui::Rect::from_center_size(to, vec2(40.0, 40.0))];
+    assert!(group_icon_target(&h.state().app, &h.ctx, &first, to, &cover).is_none());
     h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(4);
     assert!(h.state().app.ui.docking.as_ref().unwrap().floating.is_empty());
@@ -204,7 +214,9 @@ fn dragging_the_group_grip_into_the_dock_moves_both_style_tabs() {
         h.run_steps(1);
     }
     h.run_steps(2);
-    assert!(group_proposal(&h.state().app, &h.ctx, &first, to).is_some(), "a valid highlighted dock target");
+    assert!(group_proposal(&h.state().app, &h.ctx, &first, to, &[]).is_some(), "a valid highlighted dock target");
+    let cover = [egui::Rect::from_center_size(to, vec2(40.0, 40.0))];
+    assert!(group_proposal(&h.state().app, &h.ctx, &first, to, &cover).is_none(), "not through a surface in front");
     h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(4);
     let layout = h.state().app.ui.docking.as_ref().unwrap();
