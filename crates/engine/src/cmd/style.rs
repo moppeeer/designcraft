@@ -1536,13 +1536,16 @@ fn create_object(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 /// `p.stroke` merged over `base` (as [`group_param`]), refused when the weight isn't a number ≥ 0
-/// or the tint isn't finite.
+/// or the tint isn't 0–1.
 fn stroke_param(cmd: &str, p: &Value, base: Option<&designcraft_doc::Stroke>) -> Result<Option<Option<designcraft_doc::Stroke>>> {
     let st = group_param(cmd, p, "stroke", base.unwrap_or(&designcraft_doc::Stroke::default()))?;
-    if let Some(Some(st)) = &st
-        && !(st.weight.is_finite() && st.weight >= 0.0 && st.tint.is_finite())
-    {
-        return Err(bad(cmd, "stroke weight must be a number ≥ 0"));
+    if let Some(Some(st)) = &st {
+        if !(st.weight.is_finite() && st.weight >= 0.0) {
+            return Err(bad(cmd, "stroke weight must be a number ≥ 0"));
+        }
+        if !(0.0..=1.0).contains(&st.tint) {
+            return Err(bad(cmd, "stroke tint must be 0..1"));
+        }
     }
     Ok(st)
 }

@@ -730,6 +730,10 @@ fn object_styles_carry_corners_and_their_stroke_and_corners_can_be_edited() {
     for cmd in ["style.object.create", "style.object.edit"] {
         let e = s.execute(cmd, &json!({"name": "Framed", "stroke": {"weight": -3}})).unwrap_err();
         assert!(e.to_string().contains("stroke weight"), "{cmd}: {e}");
+        for tint in [-1.0, 1.5] {
+            let e = s.execute(cmd, &json!({"name": "Framed", "stroke": {"tint": tint}})).unwrap_err();
+            assert!(e.to_string().contains("stroke tint"), "{cmd}: {e}");
+        }
     }
     assert_eq!(s.doc().unwrap().doc.styles.object.len(), styles);
     // null: the style stops setting corners, the items keep theirs.
