@@ -3576,7 +3576,16 @@ pub fn confirm(app: &mut DesignApp) -> Result<Value, String> {
         }
         "alert" => Ok(Value::Null),
         crate::effects_dialog::ID => crate::effects_dialog::confirm(app, &d),
-        crate::object_style_dialog::ID => crate::object_style_dialog::confirm(app, &d),
+        crate::object_style_dialog::ID => {
+            let r = crate::object_style_dialog::confirm(app, &d);
+            if let Err(e) = &r {
+                // Keep the dialog and its edits open with the reason (an empty or taken name).
+                let mut d = d.clone();
+                d.fields.insert("status".into(), json!(e));
+                app.ui.dialog = Some(d);
+            }
+            r
+        }
         "findChange" => {
             let result = if d.b("objectMode") { Ok(Value::Null) } else { app.run("find.change", find_change_params(&d)) };
             // Confirmation consumes retained bounds before closing, even on an error.

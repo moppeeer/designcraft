@@ -99,8 +99,13 @@ pub fn confirm(app: &mut DesignApp, d: &Dialog) -> Result<Value, String> {
         p.insert("fromSelection".into(), json!(false));
         let r = app.run("style.object.create", Value::Object(p)).map_err(|e| e.to_string())?;
         let made = r["name"].as_str().unwrap_or(&name).to_string();
-        if d.b("apply") && app.session.active().is_some_and(|st| !st.selection.items.is_empty()) {
-            app.run("style.object.apply", json!({"name": made})).map_err(|e| e.to_string())?;
+        // The style exists now, so OK again mustn't make a second one: a refused apply (locked
+        // objects) goes to the status line and the dialog closes.
+        if d.b("apply")
+            && app.session.active().is_some_and(|st| !st.selection.items.is_empty())
+            && let Err(e) = app.run("style.object.apply", json!({"name": made}))
+        {
+            app.status(e.to_string());
         }
         Ok(r)
     } else {
@@ -324,6 +329,11 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
             d.fields.insert("name".into(), json!(name));
         }
     });
+    // Why OK was refused (an empty or taken name), until the next try.
+    let status = d.s("status");
+    if !status.is_empty() {
+        crate::rtl::label(ui, egui::RichText::new(status).color(crate::theme::Tokens::get(ui.ctx()).text_strong));
+    }
     ui.add_space(8.0);
     let page = d.fields.get("page").and_then(Value::as_str).unwrap_or("general").to_string();
     ui.horizontal_top(|ui| {
@@ -463,5 +473,33 @@ mod tests {
         assert_eq!((item(&app, a).stroke.weight, item(&app, b).stroke.weight), (5.0, 5.0));
         assert!(doc(&app).styles.object_style(name).unwrap().fill.is_none(), "Fill unchecked: no longer in the style");
         assert!(doc(&app).styles.object_style(name).unwrap().effects.as_ref().unwrap().drop_shadow.on, "effects kept");
+    }
+
+    /// A refused OK (an empty name, a name another style has) keeps the dialog and its edits,
+    /// with the reason shown.
+    #[test]
+    fn a_refused_ok_keeps_the_dialog_open_with_the_reason() {
+        let (mut app, _) = app_with_frame();
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, "en");
+        app.run("style.object.create", json!({"name": "Taken", "fromSelection": false})).unwrap();
+        app.run("style.object.create", json!({"name": "Mine", "fromSelection": false})).unwrap();
+        open_new(&mut app);
+        if let Some(d) = app.ui.dialog.as_mut() {
+            d.fields.insert("name".into(), json!("  "));
+            set(d, &["stroke", "weight"], json!(7.0));
+        }
+        assert!(crate::dialogs::confirm(&mut app).is_err());
+        let d = app.ui.dialog.as_ref().expect("still open");
+        assert_eq!(d.s("status"), "Enter a style name.");
+        assert_eq!(get(d, &["stroke", "weight"]), &json!(7.0), "the edits are kept");
+        assert!(frame(&mut app, &ctx).iter().any(|t| t.trim() == "Enter a style name."));
+        open_edit(&mut app, "Mine");
+        if let Some(d) = app.ui.dialog.as_mut() {
+            d.fields.insert("name".into(), json!("Taken"));
+        }
+        let e = crate::dialogs::confirm(&mut app).unwrap_err();
+        assert!(e.contains("already named"), "{e}");
+        assert!(app.ui.dialog.as_ref().is_some_and(|d| d.s("status") == e));
     }
 }
