@@ -1710,3 +1710,32 @@ fn a_line_fits_when_its_baseline_does() {
     assert!(!overset(&mut s, 78.5), "the line is set; its descenders hang below the frame");
     assert!(overset(&mut s, 50.0), "a baseline below the frame still oversets the line");
 }
+
+/// Clear Overrides puts a text frame's story back in its object style's paragraph style, as
+/// applying the style does; and a style's feather choke is kept to 0–100 %, as IDML reads it.
+#[test]
+fn object_style_clear_overrides_restores_the_paragraph_style_and_choke_is_clamped() {
+    let mut s = session();
+    s.execute("style.paragraph.create", &json!({"name": "Caption"})).unwrap();
+    s.execute("style.object.create", &json!({"name": "Captioned", "fromSelection": false, "paragraphStyle": "Caption"})).unwrap();
+    let f = s.execute("frame.create", &json!({"rect": [36, 36, 300, 200], "content": "text", "text": "One\nTwo"})).unwrap();
+    let (id, sid) = (f["id"].as_u64().unwrap(), designcraft_doc::StoryId(f["story"].as_u64().unwrap()));
+    s.execute("style.object.apply", &json!({"name": "Captioned", "ids": [id]})).unwrap();
+    let styles = |s: &Session| s.doc().unwrap().doc.story(sid).unwrap().paras.iter().map(|p| p.style.clone()).collect::<Vec<_>>();
+    assert_eq!(styles(&s), ["Caption", "Caption"]);
+    {
+        let doc = std::sync::Arc::make_mut(&mut s.doc_mut().unwrap().doc);
+        let st = std::sync::Arc::make_mut(doc.stories.get_mut(&sid).unwrap());
+        st.paras[1].style = designcraft_doc::BASIC_PARAGRAPH.into();
+    }
+    let r = s.execute("style.object.clearOverrides", &json!({"ids": [id]})).unwrap();
+    assert_eq!(r["changed"], 1);
+    assert_eq!(styles(&s), ["Caption", "Caption"]);
+    let r = s.execute("style.object.clearOverrides", &json!({"ids": [id]})).unwrap();
+    assert_eq!(r["changed"], 0, "nothing left to clear");
+
+    s.execute("style.object.create", &json!({"name": "Soft", "fromSelection": false, "effects": {"feather": 4, "featherOptions": {"choke": 150}}}))
+        .unwrap();
+    let fx = s.doc().unwrap().doc.styles.object_style("Soft").unwrap().effects.clone().unwrap();
+    assert_eq!(fx.feather_options.choke, 100.0);
+}

@@ -377,7 +377,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Clear Object Style Overrides",
             [],
             None,
-            "{ids?} — each item takes its object style's fill, stroke, effects and text frame options again → {changed}",
+            "{ids?} — each item takes its object style's fill, stroke, effects and text frame options again, and a text frame's story its paragraph style → {changed}",
             super::has_selection,
             clear_object_overrides
         ),
@@ -1430,18 +1430,33 @@ fn apply_object(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn clear_object_overrides(s: &mut Session, p: &Value) -> Result<Value> {
     let ids = super::targets(s, p)?;
-    // Each target with its style's attributes applied, kept only where that changes the item.
+    // Each target with its style's attributes applied, kept only where that changes the item;
+    // and a text frame's story back in the style's paragraph style, as applying the style does.
     let d = &s.doc()?.doc;
-    let changed: Vec<Item> = ids
-        .iter()
-        .filter_map(|id| {
-            let it = d.item(*id)?;
-            let mut next = it.clone();
-            d.styles.object_style(&it.object_style)?.apply_to(&mut next);
-            (next != *it).then_some(next)
-        })
-        .collect();
-    if changed.is_empty() {
+    let mut changed: Vec<Item> = Vec::new();
+    let mut restyled: Vec<(designcraft_doc::StoryId, String)> = Vec::new();
+    let mut n = 0;
+    for id in &ids {
+        let Some(it) = d.item(*id) else { continue };
+        let Some(os) = d.styles.object_style(&it.object_style) else { continue };
+        let mut next = it.clone();
+        os.apply_to(&mut next);
+        let item_changed = next != *it;
+        if item_changed {
+            changed.push(next);
+        }
+        let mut story_changed = false;
+        if let (Some(ps), Some(tf)) = (&os.paragraph_style, it.text_frame())
+            && d.story(tf.story).is_some_and(|st| st.paras.iter().any(|f| f.style != *ps))
+        {
+            story_changed = true;
+            if !restyled.iter().any(|(sid, _)| *sid == tf.story) {
+                restyled.push((tf.story, ps.clone()));
+            }
+        }
+        n += usize::from(item_changed || story_changed);
+    }
+    if n == 0 {
         return Ok(json!({"changed": 0}));
     }
     s.edit(|d, _| {
@@ -1450,7 +1465,13 @@ fn clear_object_overrides(s: &mut Session, p: &Value) -> Result<Value> {
                 *it = next.clone();
             }
         }
-        Ok(json!({"changed": changed.len()}))
+        for (sid, ps) in &restyled {
+            if let Some(st) = d.story_mut(*sid) {
+                let len = st.len();
+                st.format_paras(0..len, |f| f.style = ps.clone());
+            }
+        }
+        Ok(json!({"changed": n}))
     })
 }
 
