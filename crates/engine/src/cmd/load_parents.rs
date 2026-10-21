@@ -86,7 +86,7 @@ fn load_into(d: &mut Document, src: &mut Document, replace: bool) -> Result<Valu
         }
     }
     remap_layers(d, src);
-    let variables = remap_variables(d, src, &stories);
+    let variables = remap_variables(d, src, &stories)?;
 
     // The styles the text and the objects use, with the styles those name. The document's own
     // definitions of the same names stay, as when pasting.
@@ -306,8 +306,9 @@ fn remap_layers(d: &mut Document, src: &mut Document) {
 }
 
 /// Point the text variables in `stories` of `src` at `d`'s variables of the same names; the
-/// variables `d` lacks come in. Returns those.
-fn remap_variables(d: &mut Document, src: &mut Document, stories: &BTreeSet<StoryId>) -> Vec<vars::TextVariable> {
+/// variables `d` lacks come in. Returns those. Refused when `d` has no room for one: its
+/// instances would name another variable.
+fn remap_variables(d: &mut Document, src: &mut Document, stories: &BTreeSet<StoryId>) -> Result<Vec<vars::TextVariable>> {
     let mut used = BTreeSet::new();
     for st in stories.iter().filter_map(|id| src.story(*id)) {
         texts(st, &mut |t| used.extend(t.text.chars().filter_map(vars::var_index)));
@@ -322,14 +323,19 @@ fn remap_variables(d: &mut Document, src: &mut Document, stories: &BTreeSet<Stor
                 added.push(v.clone());
                 d.text_variables.len() - 1
             }
-            None => continue,
+            None => {
+                return Err(bad(
+                    ID,
+                    format!("this document has {} text variables, the most it can hold: there is no room for `{}`", vars::VAR_MAX, v.name),
+                ));
+            }
         };
         if let Some(c) = vars::var_char(j).filter(|_| i != j) {
             map.insert(i, c);
         }
     }
     if map.is_empty() {
-        return added;
+        return Ok(added);
     }
     // Every instance character is in the same UTF-8 length range, so the formatting runs stay.
     let remap = |t: &mut Story| {
@@ -345,7 +351,7 @@ fn remap_variables(d: &mut Document, src: &mut Document, stories: &BTreeSet<Stor
             }
         }
     }
-    added
+    Ok(added)
 }
 
 /// The object styles the parents' objects use that `d` lacks, with the ones they're based on,
@@ -544,5 +550,19 @@ mod tests {
         let err = s.execute("layout.parents.load", &json!({"base64": file_of(&empty), "name": "Empty.designcraft"})).unwrap_err();
         assert!(err.to_string().contains("no parent pages"), "{err}");
         assert!(s.execute("layout.parents.load", &json!({"base64": file_of(&template()), "conflicts": "merge"})).is_err());
+    }
+
+    /// A document whose variable table is full can't take the template's Edition variable: the
+    /// load is refused and changes nothing, rather than its folio naming another variable.
+    #[test]
+    fn a_full_variable_table_refuses_the_load() {
+        let mut s = new_doc(json!({"facingPages": false}));
+        for i in doc(&s).text_variables.len()..vars::VAR_MAX {
+            s.execute("variables.define", &json!({"name": format!("Variable {i}"), "type": "custom", "text": "x"})).unwrap();
+        }
+        let before = doc(&s).clone();
+        let err = s.execute("layout.parents.load", &json!({"base64": file_of(&template()), "name": "Template.designcraft"})).unwrap_err();
+        assert!(err.to_string().contains("Edition"), "{err}");
+        assert_eq!(*doc(&s), before);
     }
 }
