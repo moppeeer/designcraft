@@ -2717,8 +2717,12 @@ pub fn preflight_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
             None => rules.push((rule, vec![k])),
         }
     }
+    // The chosen issue by what it is (kind, object, message), not its row: the list is checked
+    // again every frame, and an edit can remove the rows before it.
     let sel_key = egui::Id::new("preflight_sel");
-    let mut chosen: Option<usize> = ui.data(|d| d.get_temp(sel_key)).filter(|k: &usize| *k < issues.len());
+    let identity = |i: &designcraft_engine::cmd::preflight::Issue| (i.kind.to_string(), i.item, i.message.clone());
+    let mut chosen: Option<usize> =
+        ui.data(|d| d.get_temp::<(String, Option<u64>, String)>(sel_key)).and_then(|want| issues.iter().position(|i| identity(i) == want));
     let mut go: Option<usize> = None;
     let row = |ui: &mut egui::Ui, depth: f32, label: &str, open: Option<bool>, selected: bool| {
         let (r, resp) = ui.allocate_exact_size(vec2(w, 21.0), Sense::click());
@@ -2798,8 +2802,8 @@ pub fn preflight_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
             }
         }
     });
-    if let Some(c) = chosen {
-        ui.data_mut(|d| d.insert_temp(sel_key, c));
+    if let Some(i) = chosen.and_then(|k| issues.get(k)) {
+        ui.data_mut(|d| d.insert_temp(sel_key, identity(i)));
     }
     if let Some(i) = go.and_then(|k| issues.get(k)) {
         if let Some(id) = i.item {
@@ -3260,6 +3264,7 @@ mod tests {
         let png = designcraft_render::Rendered { width: 8, height: 8, pixels: vec![120; 8 * 8 * 4] }.to_png();
         let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
         app.run("file.new", json!({})).unwrap();
+        let mut frames = Vec::new();
         for (k, name) in ["first.png", "second.png"].iter().enumerate() {
             let path = dir.path().join(name);
             std::fs::write(&path, &png).unwrap();
@@ -3267,6 +3272,7 @@ mod tests {
             let f = app.run("frame.create", json!({"rect": [x, 72, x + 100, 172]})).unwrap()["id"].as_u64().unwrap();
             app.run("file.place", json!({"path": path.to_string_lossy(), "frame": f})).unwrap();
             std::fs::remove_file(&path).unwrap();
+            frames.push(f);
         }
         let mut h = panel_harness(app, preflight_panel);
         h.run_steps(3);
@@ -3277,6 +3283,13 @@ mod tests {
         h.get_by_label("second.png").click();
         h.run_steps(3);
         let _ = h.get_by_label("The linked file can't be found.");
+        // Deleting the first object keeps the second one chosen, though its row moved up.
+        h.state_mut().run("edit.clear", json!({"ids": [frames[0]]})).unwrap();
+        h.run_steps(3);
+        assert!(h.query_by_label("first.png").is_none());
+        assert!(h.query_by_label("The linked file can't be found.").is_some(), "Info still shows the chosen issue");
+        h.state_mut().run("edit.undo", json!({})).unwrap();
+        h.run_steps(3);
         // The rule folds away.
         h.get_by_label("Missing link (2)").click();
         h.run_steps(3);
