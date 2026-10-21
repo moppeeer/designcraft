@@ -1082,6 +1082,25 @@ const TABLE: &[(&str, [&str; 5])] = &[
         ["Move to Color Group", "Déplacer vers le groupe de couleurs", "Move to Color Group", "Move to Color Group", "移动到颜色组"],
     ),
     ("Move to Group", ["Move to Group", "Déplacer vers le groupe", "Move to Group", "Move to Group", "移动到组"]),
+    ("New Style Group", ["Neue Formatgruppe", "Nouveau groupe de styles", "Nuevo grupo de estilos", "新規スタイルグループ", "新建样式组"]),
+    (
+        "Rename Style Group",
+        [
+            "Formatgruppe umbenennen",
+            "Renommer le groupe de styles",
+            "Cambiar nombre del grupo de estilos",
+            "スタイルグループ名を変更",
+            "重命名样式组",
+        ],
+    ),
+    (
+        "Delete Paragraph Style…",
+        ["Absatzformat löschen …", "Supprimer le style de paragraphe…", "Eliminar estilo de párrafo…", "段落スタイルを削除…", "删除段落样式…"],
+    ),
+    (
+        "Delete Character Style…",
+        ["Zeichenformat löschen …", "Supprimer le style de caractère…", "Eliminar estilo de carácter…", "文字スタイルを削除…", "删除字符样式…"],
+    ),
     ("Multiline", ["Multiline", "Multiligne", "Multiline", "Multiline", "多行"]),
     ("Name", ["Name", "Nom", "Name", "Name", "名称"]),
     ("Name:", ["Name:", "Nom :", "Name:", "Name:", "名称："]),
