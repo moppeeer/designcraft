@@ -31,6 +31,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Copy", "コピー"),
     ("Paste", "ペースト"),
     ("Edit Original", "オリジナルを編集"),
+    ("The link isn't a file on this computer", "リンクはこのコンピューター上のファイルではありません"),
+    ("Edit Original opens only linked images and documents", "「オリジナルを編集」で開けるのはリンクされた画像とドキュメントのみです"),
     ("Reveal in Explorer", "エクスプローラーで表示"),
     ("Reveal in Finder", "Finder で表示"),
     ("Show in Folder", "フォルダーに表示"),

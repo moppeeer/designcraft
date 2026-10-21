@@ -1160,6 +1160,13 @@ fn image_actions(app: &mut DesignApp, ui: &mut Ui, hw: f32) {
                 return;
             }
         };
+        // The link comes from the document, so it isn't trusted: only an existing file goes to the
+        // system's opener, and Edit Original only opens what File › Place takes (not a program).
+        if let Err(e) = openable(&file, clicked[3]) {
+            let msg = crate::i18n::tr(&app.ui.language, e).to_string();
+            app.status(msg);
+            return;
+        }
         // The system's opener: the file in its application, or selected in the file manager.
         if let Some(open) = app.services.open_path.as_mut()
             && let Err(e) = open(&file, clicked[3])
@@ -1167,6 +1174,26 @@ fn image_actions(app: &mut DesignApp, ui: &mut Ui, hw: f32) {
             app.status(e);
         }
     }
+}
+
+/// Whether the system's opener may be handed `file` (a link resolved against the document, so
+/// not a URL, a device or another computer's): an existing file; to open (Edit Original), one of
+/// the image and document formats File › Place takes; to reveal, a name Explorer's `/select,`
+/// argument can't be broken out of. The error is the status line's message (untranslated).
+fn openable(file: &std::path::Path, reveal: bool) -> Result<(), &'static str> {
+    if !file.is_file() {
+        return Err("The link isn't a file on this computer");
+    }
+    let name = file.to_string_lossy();
+    if reveal {
+        if name.contains('"') {
+            return Err("The link isn't a file on this computer");
+        }
+        return Ok(());
+    }
+    let ext = file.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
+    const PLACEABLE: [&str; 13] = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "svg", "psd", "eps", "ai", "pdf"];
+    if PLACEABLE.contains(&ext.as_str()) { Ok(()) } else { Err("Edit Original opens only linked images and documents") }
 }
 
 // ---------------------------------------------------------------- Text
@@ -3459,6 +3486,58 @@ mod tests {
         assert!(st.doc.assets[&g.asset].link.is_none(), "embedded");
         use egui_kittest::kittest::NodeT;
         assert!(h.get_by_label("Edit Original").accesskit_node().is_disabled(), "nothing linked to edit");
+    }
+
+    /// The opener only gets an existing image or document: a program, a URL, a missing file or a
+    /// name with a quote in it is refused with a status message.
+    #[test]
+    fn image_quick_actions_refuse_links_that_are_not_images_on_this_computer() {
+        let dir = tempfile::tempdir().unwrap();
+        let png = dir.path().join("photo.png");
+        std::fs::write(&png, designcraft_render::Rendered { width: 4, height: 4, pixels: vec![200; 64] }.to_png()).unwrap();
+        let exe = dir.path().join("setup.exe");
+        std::fs::write(&exe, b"MZ").unwrap();
+        let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let log = opened.clone();
+        let services = crate::Services {
+            open_path: Some(Box::new(move |p: &std::path::Path, reveal: bool| {
+                log.borrow_mut().push((p.to_path_buf(), reveal));
+                Ok(())
+            })),
+            ..Default::default()
+        };
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), services);
+        app.run("file.new", json!({})).unwrap();
+        let id = app.run("frame.create", json!({"rect": [72, 72, 272, 172]})).unwrap()["id"].as_u64().unwrap();
+        app.run("file.place", json!({"path": png.to_string_lossy(), "frame": id, "link": true})).unwrap();
+        app.run("selection.set", json!({"ids": [id]})).unwrap();
+        let aid = app.session.doc().unwrap().doc.item(designcraft_doc::ids::ItemId(id)).unwrap().graphic().unwrap().asset;
+        let missing = dir.path().join("gone.png");
+        let quoted = dir.path().join("a\" b.png");
+        let mut h = panel(app);
+        for link in [
+            exe.to_string_lossy().to_string(),
+            "https://example.com/photo.png".to_string(),
+            "ms-msdt:/id PCWDiagnostic".to_string(),
+            missing.to_string_lossy().to_string(),
+            quoted.to_string_lossy().to_string(),
+        ] {
+            {
+                let app = h.state_mut();
+                app.ui.status.clear();
+                let st = app.session.doc_mut().unwrap();
+                let doc = std::sync::Arc::make_mut(&mut st.doc);
+                std::sync::Arc::make_mut(doc.assets.get_mut(&aid).unwrap()).link = Some(link.clone());
+            }
+            h.run_steps(2);
+            h.get_by_label("Edit Original").click();
+            h.run_steps(2);
+            assert!(!h.state().ui.status.is_empty(), "{link}: a status message");
+        }
+        // The exe is refused for Edit Original; Reveal of a real file still works.
+        assert!(opened.borrow().is_empty(), "{:?}", opened.borrow());
+        assert!(openable(&exe, true).is_ok() && openable(&png, false).is_ok());
+        assert!(openable(&exe, false).is_err() && openable(&missing, true).is_err());
     }
 
     /// A relative link opens the file beside the document, wherever the app was started from.

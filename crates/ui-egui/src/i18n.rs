@@ -91,6 +91,26 @@ const TABLE: &[(&str, [&str; 5])] = &[
     ("Paste", ["Einfügen", "Coller", "Pegar", "ペースト", "粘贴"]),
     ("Edit Original", ["Edit Original", "Modifier l'original", "Editar original", "Edit Original", "编辑原稿"]),
     (
+        "The link isn't a file on this computer",
+        [
+            "Die Verknüpfung ist keine Datei auf diesem Computer",
+            "Le lien n'est pas un fichier de cet ordinateur",
+            "El vínculo no es un archivo de este equipo",
+            "リンクはこのコンピューター上のファイルではありません",
+            "该链接不是此计算机上的文件",
+        ],
+    ),
+    (
+        "Edit Original opens only linked images and documents",
+        [
+            "„Original bearbeiten“ öffnet nur verknüpfte Bilder und Dokumente",
+            "Modifier l'original n'ouvre que les images et documents liés",
+            "Editar original solo abre imágenes y documentos vinculados",
+            "「オリジナルを編集」で開けるのはリンクされた画像とドキュメントのみです",
+            "“编辑原稿”只能打开链接的图像和文档",
+        ],
+    ),
+    (
         "Reveal in Explorer",
         ["Reveal in Explorer", "Afficher dans l'Explorateur", "Mostrar en el Explorador", "Reveal in Explorer", "在资源管理器中显示"],
     ),

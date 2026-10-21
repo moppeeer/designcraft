@@ -32,6 +32,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Copy", "კოპირება"),
     ("Paste", "ჩასმა"),
     ("Edit Original", "ორიგინალის რედაქტირება"),
+    ("The link isn't a file on this computer", "ბმული ამ კომპიუტერზე არსებული ფაილი არ არის"),
+    ("Edit Original opens only linked images and documents", "ორიგინალის რედაქტირება მხოლოდ დაკავშირებულ გამოსახულებებსა და დოკუმენტებს ხსნის"),
     ("Reveal in Explorer", "Explorer-ში ჩვენება"),
     ("Reveal in Finder", "Finder-ში ჩვენება"),
     ("Show in Folder", "საქაღალდეში ჩვენება"),

@@ -32,6 +32,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Copy", "Copiar"),
     ("Paste", "Colar"),
     ("Edit Original", "Editar original"),
+    ("The link isn't a file on this computer", "O vínculo não é um arquivo deste computador"),
+    ("Edit Original opens only linked images and documents", "Editar original abre apenas imagens e documentos vinculados"),
     ("Reveal in Explorer", "Mostrar no Explorer"),
     ("Reveal in Finder", "Mostrar no Finder"),
     ("Show in Folder", "Mostrar na pasta"),

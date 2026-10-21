@@ -32,6 +32,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Copy", "Kopírovat"),
     ("Paste", "Vložit"),
     ("Edit Original", "Upravit originál"),
+    ("The link isn't a file on this computer", "Propojení není soubor v tomto počítači"),
+    ("Edit Original opens only linked images and documents", "Upravit originál otevírá jen propojené obrázky a dokumenty"),
     ("Reveal in Explorer", "Zobrazit v Průzkumníkovi"),
     ("Reveal in Finder", "Zobrazit ve Finderu"),
     ("Show in Folder", "Zobrazit ve složce"),

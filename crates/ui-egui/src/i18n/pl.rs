@@ -30,6 +30,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Copy", "Kopiuj"),
     ("Paste", "Wklej"),
     ("Edit Original", "Edytuj oryginał"),
+    ("The link isn't a file on this computer", "Łącze nie jest plikiem na tym komputerze"),
+    ("Edit Original opens only linked images and documents", "Edytuj oryginał otwiera tylko połączone obrazy i dokumenty"),
     ("Reveal in Explorer", "Pokaż w Eksploratorze"),
     ("Reveal in Finder", "Pokaż w Finderze"),
     ("Show in Folder", "Pokaż w folderze"),

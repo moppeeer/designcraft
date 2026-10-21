@@ -34,6 +34,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Copy", "Копировать"),
     ("Paste", "Вставить"),
     ("Edit Original", "Редактировать оригинал"),
+    ("The link isn't a file on this computer", "Связь не указывает на файл на этом компьютере"),
+    ("Edit Original opens only linked images and documents", "«Редактировать оригинал» открывает только связанные изображения и документы"),
     ("Reveal in Explorer", "Показать в Проводнике"),
     ("Reveal in Finder", "Показать в Finder"),
     ("Show in Folder", "Показать в папке"),
