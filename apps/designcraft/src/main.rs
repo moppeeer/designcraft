@@ -347,9 +347,20 @@ fn open_path(path: &std::path::Path, reveal: bool) -> Result<(), String> {
     {
         cmd = std::process::Command::new("xdg-open");
         // No portable way to select the file: its folder opens.
-        cmd.arg(if reveal { path.parent().unwrap_or(path) } else { path });
+        cmd.arg(if reveal { reveal_folder(path) } else { path });
     }
     cmd.spawn().map(drop).map_err(|e| format!("couldn't open {}: {e}", path.display()))
+}
+
+/// The folder a reveal opens where the file can't be selected (Linux): the file's own, or the
+/// current directory for a bare file name, whose parent is empty.
+#[cfg(any(test, not(any(target_os = "windows", target_os = "macos"))))]
+fn reveal_folder(path: &std::path::Path) -> &std::path::Path {
+    match path.parent() {
+        Some(p) if p.as_os_str().is_empty() => std::path::Path::new("."),
+        Some(p) => p,
+        None => path,
+    }
 }
 
 /// Desktop app ID: the Linux `.desktop` file name and hicolor icon name (Wayland matches windows by it).
@@ -589,6 +600,16 @@ fn main() -> std::process::ExitCode {
 
 #[cfg(test)]
 mod tests {
+    /// A reveal opens the file's folder; a bare file name's is the current directory, not an
+    /// empty path.
+    #[test]
+    fn reveal_opens_the_folder_of_the_file() {
+        use std::path::Path;
+        assert_eq!(super::reveal_folder(Path::new("/images/photo.jpg")), Path::new("/images"));
+        assert_eq!(super::reveal_folder(Path::new("photo.jpg")), Path::new("."));
+        assert_eq!(super::reveal_folder(Path::new("images/photo.jpg")), Path::new("images"));
+    }
+
     #[test]
     fn relink_open_dialog_lists_graphics() {
         let filters = super::open_filters("relink");
