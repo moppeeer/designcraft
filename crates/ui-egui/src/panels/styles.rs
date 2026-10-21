@@ -157,14 +157,14 @@ pub fn object(app: &mut DesignApp, ui: &mut egui::Ui) {
         }
         let editable = n != designcraft_doc::NO_OBJECT_STYLE;
         if resp.double_clicked() && editable {
-            crate::object_style_dialog::open_edit(app, n);
+            let _ = crate::object_style_dialog::open_edit(app, n);
         } else if resp.clicked() && selected {
             let _ = app.run("style.object.apply", json!({"name": n}));
         }
         resp.context_menu(|ui| {
             let label = crate::i18n::style_name(&lang, n);
             if editable && ui.button(crate::rtl::widget(ui, crate::i18n::tr(&lang, "Edit \"{name}\"…").replace("{name}", label))).clicked() {
-                crate::object_style_dialog::open_edit(app, n);
+                let _ = crate::object_style_dialog::open_edit(app, n);
                 ui.close();
             }
             if ui
@@ -202,7 +202,7 @@ pub fn object(app: &mut DesignApp, ui: &mut egui::Ui) {
                 if let Some((n, _)) = current.as_ref().filter(|(n, _)| n != designcraft_doc::NO_OBJECT_STYLE)
                     && ui.button(crate::rtl::widget(ui, crate::i18n::tr(&lang, "Object Style Options…"))).clicked()
                 {
-                    crate::object_style_dialog::open_edit(app, n);
+                    let _ = crate::object_style_dialog::open_edit(app, n);
                     ui.close();
                 }
             });

@@ -37,7 +37,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Effects for:", "Efekty dla:"),
     ("Apply Style to Selection", "Zastosuj styl do zaznaczenia"),
     ("Create New Style", "Utwórz nowy styl"),
-    ("Clear Overrides", "Wyczyść zmiany"),
+    ("Clear Overrides", "Wyczyść zastąpienia"),
     ("Shape:", "Kształt:"),
     ("(no attributes)", "(brak atrybutów)"),
     ("Enter a style name.", "Wpisz nazwę stylu."),

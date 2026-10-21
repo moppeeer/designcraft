@@ -39,11 +39,14 @@ pub fn open_new(app: &mut DesignApp) {
     app.ui.dialog = Some(Dialog::new(ID, fields));
 }
 
-/// Object Style Options for style `name`.
-pub fn open_edit(app: &mut DesignApp, name: &str) {
-    let Some(os) = app.session.active().and_then(|st| st.doc.styles.object_style(name).cloned()) else { return };
+/// Object Style Options for style `name`; refused for a style the document doesn't have and for
+/// `[None]`, which has no options.
+pub fn open_edit(app: &mut DesignApp, name: &str) -> Result<(), String> {
+    let Some(os) = app.session.active().and_then(|st| st.doc.styles.object_style(name).cloned()) else {
+        return Err(format!("no object style `{name}`"));
+    };
     if name == designcraft_doc::NO_OBJECT_STYLE {
-        return;
+        return Err(format!("`{name}` has no options"));
     }
     let fields = json!({
         "new": false,
@@ -60,6 +63,7 @@ pub fn open_edit(app: &mut DesignApp, name: &str) {
         "apply": false,
     });
     app.ui.dialog = Some(Dialog::new(ID, fields));
+    Ok(())
 }
 
 /// The dialog's title: New Object Style or Object Style Options.
@@ -480,7 +484,7 @@ mod tests {
 
         let b = app.run("frame.create", json!({"rect": [200, 72, 300, 172], "content": "graphic"})).unwrap()["id"].as_u64().unwrap();
         app.run("style.object.apply", json!({"name": name, "ids": [b]})).unwrap();
-        open_edit(&mut app, name);
+        open_edit(&mut app, name).unwrap();
         if let Some(d) = app.ui.dialog.as_mut() {
             assert_eq!(title(d), "Object Style Options");
             set(d, &["stroke", "weight"], json!(5.0));
@@ -491,6 +495,19 @@ mod tests {
         assert_eq!((item(&app, a).stroke.weight, item(&app, b).stroke.weight), (5.0, 5.0));
         assert!(doc(&app).styles.object_style(name).unwrap().fill.is_none(), "Fill unchecked: no longer in the style");
         assert!(doc(&app).styles.object_style(name).unwrap().effects.as_ref().unwrap().drop_shadow.on, "effects kept");
+    }
+
+    /// `objectStyle.dialog` with a style the document lacks, or `[None]`, is an error and opens
+    /// nothing; without a name it opens New Object Style.
+    #[test]
+    fn the_dialog_command_refuses_a_style_with_no_options() {
+        let (mut app, _) = app_with_frame();
+        for name in ["Nope", designcraft_doc::NO_OBJECT_STYLE] {
+            assert!(app.run("objectStyle.dialog", json!({"name": name})).is_err(), "{name}");
+            assert!(app.ui.dialog.is_none(), "{name}");
+        }
+        app.run("objectStyle.dialog", json!({})).unwrap();
+        assert!(app.ui.dialog.as_ref().is_some_and(|d| d.b("new")));
     }
 
     /// A refused OK (an empty name, a name another style has) keeps the dialog and its edits,
@@ -512,7 +529,7 @@ mod tests {
         assert_eq!(d.s("status"), "Enter a style name.");
         assert_eq!(get(d, &["stroke", "weight"]), &json!(7.0), "the edits are kept");
         assert!(frame(&mut app, &ctx).iter().any(|t| t.trim() == "Enter a style name."));
-        open_edit(&mut app, "Mine");
+        open_edit(&mut app, "Mine").unwrap();
         if let Some(d) = app.ui.dialog.as_mut() {
             d.fields.insert("name".into(), json!("Taken"));
         }
