@@ -1035,6 +1035,20 @@ const TABLE: &[(&str, [&str; 5])] = &[
     ),
     ("Load Styles", ["Formate laden", "Charger les styles", "Cargar estilos", "スタイルを読み込み", "加载样式"]),
     (
+        "Apply Next Style",
+        ["Nächstes Format anwenden", "Appliquer le style suivant", "Aplicar estilo siguiente", "次のスタイルを適用", "应用下一样式"],
+    ),
+    (
+        "Text Frame General Options",
+        [
+            "Allgemeine Textrahmenoptionen",
+            "Options générales du bloc de texte",
+            "Opciones generales de marco de texto",
+            "テキストフレーム一般オプション",
+            "文本框架常规选项",
+        ],
+    ),
+    (
         "Differs from this document",
         ["Weicht von diesem Dokument ab", "Diffère de ce document", "Difiere de este documento", "このドキュメントと異なります", "与此文档不同"],
     ),

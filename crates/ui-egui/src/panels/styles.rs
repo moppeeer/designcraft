@@ -106,7 +106,7 @@ pub fn character(app: &mut DesignApp, ui: &mut egui::Ui) {
 }
 
 /// The selected object's style, and whether the object differs from it (an override: `+`): its
-/// own attributes, or a text frame's paragraphs in another style than the object style's.
+/// own attributes, or a text frame's paragraphs in other styles than the object style gives them.
 fn object_style_of_selection(app: &DesignApp) -> Option<(String, bool)> {
     let st = app.session.active()?;
     let it = st.selection.items.first().and_then(|i| st.doc.item(*i))?;
@@ -114,8 +114,8 @@ fn object_style_of_selection(app: &DesignApp) -> Option<(String, bool)> {
     let mut over = false;
     if let Some(os) = st.doc.styles.object_style(&it.object_style) {
         os.apply_to(&mut styled);
-        if let (Some(ps), Some(tf)) = (&os.paragraph_style, it.text_frame()) {
-            over = st.doc.story(tf.story).is_some_and(|s| s.paras.iter().any(|f| f.style != *ps));
+        if let Some(tf) = it.text_frame() {
+            over = st.doc.story(tf.story).is_some_and(|s| !os.story_follows(&st.doc.styles, s));
         }
     }
     Some((it.object_style.clone(), over || styled != *it))

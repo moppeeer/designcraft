@@ -745,6 +745,76 @@ fn object_styles_carry_corners_and_their_stroke_and_corners_can_be_edited() {
     assert_eq!(item(&s, a).object_style, name);
 }
 
+/// The course's chapter 39 (nested object styles): an object style carries a paragraph style,
+/// with Apply Next Style a chain of them, and text frame options. Applying it styles the frame's
+/// text; editing it moves the frames that still follow it, not one whose text took another style,
+/// which Clear Overrides puts back.
+#[test]
+fn object_styles_carry_a_paragraph_style_and_text_frame_options() {
+    use designcraft_doc::ItemId;
+    let mut s = session();
+    s.execute("style.paragraph.create", &json!({"name": "Body Text"})).unwrap();
+    s.execute(
+        "style.paragraph.create",
+        &json!({"name": "Drop Cap First Paragraph", "nextStyle": "Body Text", "para": {"dropCapLines": 3, "dropCapChars": 1}}),
+    )
+    .unwrap();
+    let name = "Text Box Drop Cap";
+    s.execute(
+        "style.object.create",
+        &json!({"name": name, "fromSelection": false, "paragraphStyle": "Drop Cap First Paragraph", "applyNextStyle": true, "textFrame": {"inset": [4, 4, 4, 4]}}),
+    )
+    .unwrap();
+    let frame = |s: &mut Session, x: f64, text: &str| {
+        let r = s.execute("frame.create", &json!({"rect": [x, 36, x + 200.0, 300], "content": "text", "text": text, "caret": false})).unwrap();
+        (r["id"].as_u64().unwrap(), r["story"].clone())
+    };
+    let ((a, _), (b, b_story)) = (frame(&mut s, 36.0, "One\nTwo\nThree"), frame(&mut s, 300.0, "Alone"));
+    s.execute("style.object.apply", &json!({"name": name, "ids": [a, b]})).unwrap();
+    let styles_of = |s: &Session, id: u64| {
+        let d = &s.doc().unwrap().doc;
+        let sid = d.item(ItemId(id)).unwrap().text_frame().unwrap().story;
+        d.story(sid).unwrap().paras.iter().map(|p| p.style.clone()).collect::<Vec<_>>()
+    };
+    let options = |s: &Session, id: u64| s.doc().unwrap().doc.item(ItemId(id)).unwrap().text_frame().unwrap().options.clone();
+    assert_eq!(styles_of(&s, a), ["Drop Cap First Paragraph", "Body Text", "Body Text"], "Apply Next Style");
+    assert_eq!(styles_of(&s, b), ["Drop Cap First Paragraph"]);
+    assert_eq!(options(&s, a).inset, [4.0; 4]);
+
+    // b's text takes another paragraph style: its own, kept when the object style changes.
+    s.execute("text.select", &json!({"story": b_story, "anchor": 0, "focus": 5})).unwrap();
+    s.execute("style.paragraph.apply", &json!({"name": "Body Text"})).unwrap();
+    s.execute("style.paragraph.create", &json!({"name": "Box Body Text"})).unwrap();
+    let r = s
+        .execute("style.object.edit", &json!({"name": name, "paragraphStyle": "Box Body Text", "applyNextStyle": false, "textFrame": {"columns": 2}}))
+        .unwrap();
+    assert_eq!((r["updated"].as_u64(), r["restyled"].as_u64()), (Some(2), Some(1)));
+    assert_eq!(styles_of(&s, a), ["Box Body Text"; 3]);
+    assert_eq!(styles_of(&s, b), ["Body Text"], "its own style stays");
+    assert_eq!((options(&s, a).columns, options(&s, a).inset, options(&s, b).columns), (2, [4.0; 4], 2));
+    s.execute("style.object.clearOverrides", &json!({"ids": [b]})).unwrap();
+    assert_eq!(styles_of(&s, b), ["Box Body Text"]);
+
+    // Refused: an unknown paragraph style, no columns, a negative inset, a word for a switch.
+    for bad in [
+        json!({"paragraphStyle": "Nope"}),
+        json!({"paragraphStyle": 3}),
+        json!({"textFrame": {"columns": 0}}),
+        json!({"textFrame": {"inset": [-1, 0, 0, 0]}}),
+        json!({"applyNextStyle": "yes"}),
+    ] {
+        let mut p = bad.clone();
+        p["name"] = json!(name);
+        assert!(s.execute("style.object.edit", &p).is_err(), "{bad}");
+        assert!(s.execute("style.object.create", &p).is_err(), "{bad}");
+    }
+    // null: the style no longer sets a paragraph style or frame options; the frames keep theirs.
+    s.execute("style.object.edit", &json!({"name": name, "paragraphStyle": null, "textFrame": null})).unwrap();
+    let os = s.doc().unwrap().doc.styles.object_style(name).cloned().unwrap();
+    assert!(os.paragraph_style.is_none() && os.text_frame.is_none());
+    assert_eq!((styles_of(&s, a), options(&s, a).columns), (vec!["Box Body Text".to_string(); 3], 2));
+}
+
 #[test]
 fn object_style_effects_reach_grouped_and_anchored_items() {
     use designcraft_doc::ItemId;

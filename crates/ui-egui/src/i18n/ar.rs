@@ -30,6 +30,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "قص"),
     ("Copy", "نسخ"),
     ("Paste", "لصق"),
+    ("Apply Next Style", "تطبيق النمط التالي"),
+    ("Text Frame General Options", "خيارات عامة لإطار النص"),
     ("New Object Style", "نمط كائن جديد"),
     ("Object Style Options", "خيارات نمط الكائن"),
     ("Object Style Options…", "خيارات نمط الكائن…"),

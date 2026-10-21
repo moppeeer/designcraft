@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::attrs::{CharAttrs, CharProps, ParaAttrs, ParaProps};
 use crate::item::{Effects, Fill, Item, Stroke, TextFrameOptions};
-use crate::story::{BASIC_PARAGRAPH, CharFormat, NO_CHAR_STYLE, ParaFormat};
+use crate::story::{BASIC_PARAGRAPH, CharFormat, NO_CHAR_STYLE, ParaFormat, Story};
 
 pub const NO_PARA_STYLE: &str = "[No Paragraph Style]";
 pub const BASIC_GRAPHICS_FRAME: &str = "[Basic Graphics Frame]";
@@ -54,6 +54,10 @@ pub struct ObjectStyle {
     pub stroke: Option<Stroke>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paragraph_style: Option<String>,
+    /// Paragraph Styles › Apply Next Style: the paragraph style goes on a text frame's first
+    /// paragraph, and each paragraph after it takes the Next Style of the one before.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub apply_next_style: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_frame: Option<TextFrameOptions>,
     /// Effects (drop shadow, feather, glows…). An item using the style follows them until its own
@@ -83,6 +87,43 @@ impl ObjectStyle {
         if let (Some(tf), Some(o)) = (it.text_frame_mut(), &self.text_frame) {
             tf.options = o.clone();
         }
+    }
+
+    /// The paragraph style of each of a text frame's `n` paragraphs under this style: its
+    /// paragraph style for all of them, or with Apply Next Style that one first and then each
+    /// one's Next Style. `None` when the style sets no paragraph style.
+    pub fn paragraph_styles(&self, styles: &Styles, n: usize) -> Option<Vec<String>> {
+        let mut cur = self.paragraph_style.clone()?;
+        let mut out = Vec::with_capacity(n);
+        for _ in 0..n {
+            out.push(cur.clone());
+            if self.apply_next_style
+                && let Some(next) = styles.para(&cur).and_then(|s| s.next_style.clone())
+            {
+                cur = next;
+            }
+        }
+        Some(out)
+    }
+
+    /// Whether a story's paragraphs are in the paragraph styles this style gives them (they
+    /// always are when it sets none).
+    pub fn story_follows(&self, styles: &Styles, st: &Story) -> bool {
+        self.paragraph_styles(styles, st.paras.len()).is_none_or(|want| st.paras.iter().zip(&want).all(|(f, w)| f.style == *w))
+    }
+
+    /// Put a story's paragraphs in the paragraph styles this style gives them; `false` when it
+    /// sets none or they already are.
+    pub fn restyle(&self, styles: &Styles, st: &mut Story) -> bool {
+        if self.story_follows(styles, st) {
+            return false;
+        }
+        let Some(want) = self.paragraph_styles(styles, st.paras.len()) else { return false };
+        for (f, w) in st.paras.iter_mut().zip(want) {
+            f.style = w;
+        }
+        st.rev = st.rev.wrapping_add(1);
+        true
     }
 }
 

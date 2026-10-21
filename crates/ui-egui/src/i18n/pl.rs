@@ -29,6 +29,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "Wytnij"),
     ("Copy", "Kopiuj"),
     ("Paste", "Wklej"),
+    ("Apply Next Style", "Zastosuj następny styl"),
+    ("Text Frame General Options", "Ogólne opcje ramki tekstowej"),
     ("New Object Style", "Nowy styl obiektu"),
     ("Object Style Options", "Opcje stylu obiektu"),
     ("Object Style Options…", "Opcje stylu obiektu…"),

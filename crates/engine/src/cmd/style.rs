@@ -359,7 +359,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "New Object Style…",
             [],
             None,
-            "{name, fromSelection?: true (fill, stroke, corners, effects and text frame options of the first selected item), fill?: swatch | {swatch?, tint?}, stroke?: {swatch?, weight?, tint?, type?, …}, corners?: {shape?, size?} | {corners: [{shape, size}] ×4}, paragraphStyle?, effects?: {dropShadow?, feather?, innerShadow?, outerGlow?, innerGlow?, bevel?, satin?, gradientFeather?, directionalFeather?}, dropShadow?: {on?, color?, opacity? (0–1), angle?, globalLight?, distance?, size?, spread?}, feather?: width, innerShadow?, outerGlow?, innerGlow?, bevel?, satin?, gradientFeather?, directionalFeather?} → {name} (made unique)",
+            "{name, fromSelection?: true (fill, stroke, corners, effects and text frame options of the first selected item), fill?: swatch | {swatch?, tint?}, stroke?: {swatch?, weight?, tint?, type?, …}, corners?: {shape?, size?} | {corners: [{shape, size}] ×4}, paragraphStyle?: a paragraph style (null: none; the text of a frame the style is applied to takes it), applyNextStyle?: bool (each paragraph after the first takes the Next Style of the one before), textFrame?: {columns?, columnsKind?, gutter?, columnWidth?, balanceColumns?, inset?: [top, left, bottom, right], verticalJustification?, ignoreWrap?, …} | null (the options of `document.inspect` text frames; null: the style sets none), effects?: {dropShadow?, feather?, innerShadow?, outerGlow?, innerGlow?, bevel?, satin?, gradientFeather?, directionalFeather?}, dropShadow?: {on?, color?, opacity? (0–1), angle?, globalLight?, distance?, size?, spread?}, feather?: width, innerShadow?, outerGlow?, innerGlow?, bevel?, satin?, gradientFeather?, directionalFeather?} → {name} (made unique)",
             has_doc,
             create_object
         ),
@@ -368,7 +368,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Object Style Options…",
             [],
             None,
-            "{name, rename?: new name (every use follows), fill?: swatch | {swatch?, tint?} | null, stroke?: {swatch?, weight?, tint?, type?, …} | null, corners?: {shape?: none|rounded|inverseRounded|inset|bevel|fancy, size?} | {corners: [{shape, size}] ×4} | null (null: the style no longer sets it; items keep theirs), effects?: {…} | null (the style no longer sets effects), dropShadow?, feather?, innerShadow?, outerGlow?, innerGlow?, bevel?, satin?, gradientFeather?, directionalFeather?} — effect objects merge field by field into the style's effects (fields as in `document.inspect` item effects); values that aren't finite numbers are refused, the others clamped (opacities 0–1, sizes and distances ≥ 0); items using the style whose effects (fill, stroke, corners) match the style's (an item's defaults, when the style set none) take the new ones, items with their own keep them → {name, updated}",
+            "{name, rename?: new name (every use follows), fill?: swatch | {swatch?, tint?} | null, stroke?: {swatch?, weight?, tint?, type?, …} | null, corners?: {shape?: none|rounded|inverseRounded|inset|bevel|fancy, size?} | {corners: [{shape, size}] ×4} | null (null: the style no longer sets it; items keep theirs), paragraphStyle?: a paragraph style (null: none; the text of a frame the style is applied to takes it), applyNextStyle?: bool (each paragraph after the first takes the Next Style of the one before), textFrame?: {columns?, columnsKind?, gutter?, columnWidth?, balanceColumns?, inset?: [top, left, bottom, right], verticalJustification?, ignoreWrap?, …} | null (the options of `document.inspect` text frames; null: the style sets none), effects?: {…} | null (the style no longer sets effects), dropShadow?, feather?, innerShadow?, outerGlow?, innerGlow?, bevel?, satin?, gradientFeather?, directionalFeather?} — effect objects merge field by field into the style's effects (fields as in `document.inspect` item effects); values that aren't finite numbers are refused, the others clamped (opacities 0–1, sizes and distances ≥ 0); items using the style whose effects (fill, stroke, corners) match the style's (an item's defaults, when the style set none) take the new ones, items with their own keep them → {name, updated}",
             has_doc,
             edit_object
         ),
@@ -1416,12 +1416,11 @@ fn apply_object(s: &mut Session, p: &Value) -> Result<Value> {
                 stories.push(tf.story);
             }
         }
-        if let Some(ps) = &os.paragraph_style {
-            for sid in stories {
-                if let Some(st) = d.story_mut(sid) {
-                    let len = st.len();
-                    st.format_paras(0..len, |f| f.style = ps.clone());
-                }
+        // The text takes the style's paragraph style (with Apply Next Style, a chain of them).
+        let styles = d.styles.clone();
+        for sid in stories {
+            if let Some(st) = d.story_mut(sid) {
+                os.restyle(&styles, st);
             }
         }
         Ok(Value::Null)
@@ -1434,7 +1433,7 @@ fn clear_object_overrides(s: &mut Session, p: &Value) -> Result<Value> {
     // and a text frame's story back in the style's paragraph style, as applying the style does.
     let d = &s.doc()?.doc;
     let mut changed: Vec<Item> = Vec::new();
-    let mut restyled: Vec<(designcraft_doc::StoryId, String)> = Vec::new();
+    let mut restyled: Vec<(designcraft_doc::StoryId, ObjectStyle)> = Vec::new();
     let mut n = 0;
     for id in &ids {
         let Some(it) = d.item(*id) else { continue };
@@ -1446,12 +1445,12 @@ fn clear_object_overrides(s: &mut Session, p: &Value) -> Result<Value> {
             changed.push(next);
         }
         let mut story_changed = false;
-        if let (Some(ps), Some(tf)) = (&os.paragraph_style, it.text_frame())
-            && d.story(tf.story).is_some_and(|st| st.paras.iter().any(|f| f.style != *ps))
+        if let Some(tf) = it.text_frame()
+            && d.story(tf.story).is_some_and(|st| !os.story_follows(&d.styles, st))
         {
             story_changed = true;
             if !restyled.iter().any(|(sid, _)| *sid == tf.story) {
-                restyled.push((tf.story, ps.clone()));
+                restyled.push((tf.story, os.clone()));
             }
         }
         n += usize::from(item_changed || story_changed);
@@ -1465,10 +1464,10 @@ fn clear_object_overrides(s: &mut Session, p: &Value) -> Result<Value> {
                 *it = next.clone();
             }
         }
-        for (sid, ps) in &restyled {
+        let styles = d.styles.clone();
+        for (sid, os) in &restyled {
             if let Some(st) = d.story_mut(*sid) {
-                let len = st.len();
-                st.format_paras(0..len, |f| f.style = ps.clone());
+                os.restyle(&styles, st);
             }
         }
         Ok(json!({"changed": n}))
@@ -1542,8 +1541,14 @@ fn create_object(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(c) = corners_param(CREATE, p, os.corners.unwrap_or_default())? {
         os.corners = c;
     }
-    if let Some(ps) = str_param(p, "paragraphStyle") {
-        os.paragraph_style = Some(ps.to_string());
+    if let Some(ps) = paragraph_style_param(CREATE, s, p)? {
+        os.paragraph_style = ps;
+    }
+    if let Some(next) = bool_param(CREATE, p, "applyNextStyle")? {
+        os.apply_next_style = next;
+    }
+    if let Some(tf) = text_frame_param(CREATE, p, os.text_frame.as_ref())? {
+        os.text_frame = tf;
     }
     if let Some(e) = effects_param("style.object.create", p, os.effects.as_ref().unwrap_or(&Effects::default()))? {
         os.effects = Some(e);
@@ -1554,6 +1559,46 @@ fn create_object(s: &mut Session, p: &Value) -> Result<Value> {
         d.styles_mut().object.push(os.clone());
         Ok(json!({"name": name}))
     })
+}
+
+/// `paragraphStyle`: a paragraph style's name, or null (the object style sets none).
+fn paragraph_style_param(cmd: &str, s: &Session, p: &Value) -> Result<Option<Option<String>>> {
+    match p.get("paragraphStyle") {
+        None => Ok(None),
+        Some(Value::Null) => Ok(Some(None)),
+        Some(Value::String(n)) if s.doc()?.doc.styles.para(n).is_some() => Ok(Some(Some(n.clone()))),
+        Some(Value::String(n)) => Err(bad(cmd, format!("no paragraph style `{n}`"))),
+        Some(_) => Err(bad(cmd, "`paragraphStyle` must be a paragraph style's name or null")),
+    }
+}
+
+/// A true/false parameter, when given.
+fn bool_param(cmd: &str, p: &Value, key: &str) -> Result<Option<bool>> {
+    match p.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(b)) => Ok(Some(*b)),
+        Some(_) => Err(bad(cmd, format!("`{key}` must be true or false"))),
+    }
+}
+
+/// `textFrame` (a text frame's options, as `document.inspect` shows them) merged over `base`, or
+/// null; refused when the columns aren't 1–40 or a gutter, width or inset isn't 0–15552 pt.
+fn text_frame_param(
+    cmd: &str,
+    p: &Value,
+    base: Option<&designcraft_doc::TextFrameOptions>,
+) -> Result<Option<Option<designcraft_doc::TextFrameOptions>>> {
+    let tf = group_param(cmd, p, "textFrame", base.unwrap_or(&designcraft_doc::TextFrameOptions::default()))?;
+    if let Some(Some(o)) = &tf {
+        if !(1..=40).contains(&o.columns) {
+            return Err(bad(cmd, "text frame columns must be 1–40"));
+        }
+        let mut lengths = [o.gutter, o.column_width, o.vj_paragraph_spacing_limit, o.first_baseline_min].into_iter().chain(o.inset);
+        if !lengths.all(|v| v.is_finite() && (0.0..=15552.0).contains(&v)) {
+            return Err(bad(cmd, "a text frame's gutter, widths and insets must be 0–15552 pt"));
+        }
+    }
+    Ok(tf)
 }
 
 /// `p.stroke` merged over `base` (as [`group_param`]), refused when the weight isn't a number ≥ 0
@@ -1658,6 +1703,15 @@ fn edit_object(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(c) = corners_param(CMD, p, old.corners.unwrap_or_default())? {
         new.corners = c;
     }
+    if let Some(ps) = paragraph_style_param(CMD, s, p)? {
+        new.paragraph_style = ps;
+    }
+    if let Some(next) = bool_param(CMD, p, "applyNextStyle")? {
+        new.apply_next_style = next;
+    }
+    if let Some(tf) = text_frame_param(CMD, p, old.text_frame.as_ref())? {
+        new.text_frame = tf;
+    }
     let rename = str_param(p, "rename").map(str::trim).filter(|r| *r != name).map(str::to_string);
     if let Some(r) = &rename {
         let builtin = name.starts_with('[') && name.ends_with(']');
@@ -1701,11 +1755,14 @@ fn edit_object(s: &mut Session, p: &Value) -> Result<Value> {
             .flatten()
             .map(|f| (old.stroke.clone().unwrap_or_else(designcraft_doc::Stroke::none), f));
         let corners = (new.corners != old.corners).then_some(new.corners).flatten().map(|c| (old.corners.unwrap_or_default(), c));
+        let frame =
+            (new.text_frame != old.text_frame).then_some(new.text_frame.clone()).flatten().map(|t| (old.text_frame.clone().unwrap_or_default(), t));
         let follows = |it: &Item| {
             effects.as_ref().is_some_and(|(o, _)| it.effects == *o)
                 || fill.as_ref().is_some_and(|(o, _)| it.fill == *o)
                 || stroke.as_ref().is_some_and(|(o, _)| it.stroke == *o)
                 || corners.as_ref().is_some_and(|(o, _)| it.corners == *o)
+                || frame.as_ref().is_some_and(|(o, _)| it.text_frame().is_some_and(|t| t.options == *o))
         };
         let updated = d.update_items(
             |it| it.object_style == new.name && follows(it),
@@ -1730,9 +1787,43 @@ fn edit_object(s: &mut Session, p: &Value) -> Result<Value> {
                 {
                     it.corners = *n;
                 }
+                if let Some((o, n)) = &frame
+                    && let Some(tf) = it.text_frame_mut()
+                    && tf.options == *o
+                {
+                    tf.options = n.clone();
+                }
             },
         );
-        Ok(json!({"name": new.name, "updated": updated}))
+        // The text of the frames using the style takes a new paragraph style (or chain) while it
+        // is in the old one's; when the style set none before, all of it does.
+        let mut restyled = 0;
+        if new.paragraph_style.is_some() && (new.paragraph_style != old.paragraph_style || new.apply_next_style != old.apply_next_style) {
+            let mut stories = Vec::new();
+            for sp in d.spreads.iter().chain(d.parents.iter()) {
+                for it in &sp.items {
+                    it.walk(&mut |i| {
+                        if i.object_style == new.name
+                            && let Some(tf) = i.text_frame()
+                        {
+                            stories.push(tf.story);
+                        }
+                    });
+                }
+            }
+            stories.sort_unstable();
+            stories.dedup();
+            let styles = d.styles.clone();
+            for sid in stories {
+                if d.story(sid).is_some_and(|st| old.story_follows(&styles, st))
+                    && let Some(st) = d.story_mut(sid)
+                    && new.restyle(&styles, st)
+                {
+                    restyled += 1;
+                }
+            }
+        }
+        Ok(json!({"name": new.name, "updated": updated, "restyled": restyled}))
     })
 }
 

@@ -149,6 +149,34 @@ fn item_overrides_and_disabled_categories_turn_style_effects_off() {
     assert!((ds.opacity - 0.75).abs() < 1e-6);
 }
 
+/// An object style's paragraph style and Apply Next Style (`ApplyNextParagraphStyle`) round-trip.
+#[test]
+fn object_style_apply_next_style_round_trips() {
+    let mut d = small_doc();
+    let styles = std::sync::Arc::make_mut(&mut d.styles);
+    styles.paragraph.push(designcraft_doc::ParagraphStyle {
+        name: "Opener".into(),
+        based_on: None,
+        next_style: Some(designcraft_doc::BASIC_PARAGRAPH.into()),
+        para: Default::default(),
+        chars: Default::default(),
+        shortcut: String::new(),
+    });
+    for (name, next) in [("Chained", true), ("Single", false)] {
+        styles.object.push(designcraft_doc::ObjectStyle {
+            name: name.into(),
+            paragraph_style: Some("Opener".into()),
+            apply_next_style: next,
+            ..Default::default()
+        });
+    }
+    let back = import_idml(&export_idml(&d)).unwrap();
+    for (name, next) in [("Chained", true), ("Single", false)] {
+        let os = back.styles.object_style(name).unwrap();
+        assert_eq!((os.paragraph_style.as_deref(), os.apply_next_style), (Some("Opener"), next), "{name}");
+    }
+}
+
 #[test]
 fn exported_frames_keep_their_own_values_over_their_object_style() {
     let mut d = small_doc();

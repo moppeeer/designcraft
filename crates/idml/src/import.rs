@@ -1275,7 +1275,8 @@ impl<'r> Importer<'r> {
             // in a rectangle's path order.
             let corners =
                 (e.get("EnableStrokeAndCornerOptions") != Some("false")).then(|| corners(e, "")).flatten().map(|c| CornerOptions { corners: c });
-            let s = ObjectStyle { name: name.clone(), based_on, fill, stroke, paragraph_style, text_frame, effects, corners };
+            let apply_next_style = paragraph_style.is_some() && e.get("ApplyNextParagraphStyle") == Some("true");
+            let s = ObjectStyle { name: name.clone(), based_on, fill, stroke, paragraph_style, apply_next_style, text_frame, effects, corners };
             match self.styles.object.iter_mut().find(|o| o.name == name) {
                 Some(slot) => *slot = s,
                 None => self.styles.object.push(s),

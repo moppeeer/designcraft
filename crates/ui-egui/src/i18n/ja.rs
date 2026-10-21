@@ -30,6 +30,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "カット"),
     ("Copy", "コピー"),
     ("Paste", "ペースト"),
+    ("Apply Next Style", "次のスタイルを適用"),
+    ("Text Frame General Options", "テキストフレーム一般オプション"),
     ("Paste Vector Art", "ベクトルアートをペースト"),
     ("Baseline Options", "ベースラインオプション"),
     ("Column Rules", "段落境界線"),

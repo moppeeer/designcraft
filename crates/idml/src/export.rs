@@ -1074,6 +1074,7 @@ impl<'a> Ex<'a> {
             }
             if let Some(ps) = &os.paragraph_style {
                 el.set("AppliedParagraphStyle", names::style_self("ParagraphStyle", PARA_BUILTINS, ps));
+                el.set("ApplyNextParagraphStyle", bool_s(os.apply_next_style));
             }
             let mut el = with_props(el, props);
             if let Some(e) = &os.effects {

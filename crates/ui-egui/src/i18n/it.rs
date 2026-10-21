@@ -28,6 +28,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "Taglia"),
     ("Copy", "Copia"),
     ("Paste", "Incolla"),
+    ("Apply Next Style", "Applica stile successivo"),
+    ("Text Frame General Options", "Opzioni generali cornice di testo"),
     ("New Object Style", "Nuovo stile oggetto"),
     ("Object Style Options", "Opzioni stile oggetto"),
     ("Object Style Options…", "Opzioni stile oggetto…"),

@@ -2,6 +2,9 @@
 //! InDesign's: the style's name on top; on the left its Basic Attributes (a checkbox includes one
 //! in the style, a click shows its settings) and its effects; on the right the settings of the
 //! attribute shown (General sums the style up); Apply Style to Selection for a new style.
+//!
+//! Paragraph Styles nests a paragraph style in the object style (the course's chapter 39), and
+//! Text Frame General Options is the Text Frame Options dialog's General page.
 
 use serde_json::{Value, json};
 
@@ -12,8 +15,30 @@ use crate::theme::semibold;
 /// The dialog's id.
 pub const ID: &str = "objectStyle";
 
-/// Basic Attributes: (key, label). General isn't an attribute: it sums the style up.
-const ATTRIBUTES: [(&str, &str); 4] = [("general", "General"), ("fill", "Fill"), ("stroke", "Stroke"), ("corners", "Stroke & Corner Options")];
+/// Basic Attributes: (key, label), in InDesign's order. General isn't an attribute: it sums the
+/// style up.
+const ATTRIBUTES: [(&str, &str); 6] = [
+    ("general", "General"),
+    ("fill", "Fill"),
+    ("stroke", "Stroke"),
+    ("corners", "Stroke & Corner Options"),
+    ("paragraph", "Paragraph Styles"),
+    ("textFrame", "Text Frame General Options"),
+];
+
+/// The fields of the Paragraph Styles and Text Frame General Options pages: the style's paragraph
+/// style (`""`: none), Apply Next Style, and text frame options `tf` as the Text Frame Options
+/// dialog shows them (`tfBase` keeps the options the page doesn't show).
+fn text_fields(app: &DesignApp, fields: &mut Value, paragraph: Option<&str>, next: bool, tf: &designcraft_doc::TextFrameOptions) {
+    let units = app.session.active().map_or(designcraft_geom::Unit::Picas, |s| s.doc.settings.horizontal_units);
+    fields["paragraphStyle"] = json!(paragraph.unwrap_or(""));
+    fields["applyNext"] = json!(next);
+    fields["tfBase"] = serde_json::to_value(tf).unwrap_or_default();
+    fields["insetLinked"] = json!(tf.inset.iter().all(|v| (v - tf.inset[0]).abs() < 1e-9));
+    if let (Value::Object(f), Value::Object(shown)) = (fields, crate::dialogs::text_frame_fields(tf, units, None)) {
+        f.extend(shown);
+    }
+}
 
 /// The dialog for a new style from the selected object (its fill, stroke, corners and effects,
 /// as InDesign's New Object Style), named "Object Style n".
@@ -23,7 +48,9 @@ pub fn open_new(app: &mut DesignApp) {
     let taken = |n: &str| st.doc.styles.object_style(n).is_some();
     let name = (1..).map(|i| format!("Object Style {i}")).find(|n| !taken(n)).unwrap_or_default();
     let from = it.is_some();
-    let fields = json!({
+    // A text frame's options come along; its paragraph style is left to choose, as in InDesign.
+    let frame = it.as_ref().and_then(|i| i.text_frame()).map(|t| t.options.clone());
+    let mut fields = json!({
         "new": true,
         "name": name,
         "basedOn": designcraft_doc::NO_OBJECT_STYLE,
@@ -32,10 +59,11 @@ pub fn open_new(app: &mut DesignApp) {
         "corners": it.as_ref().map(|i| i.corners).unwrap_or_default(),
         "fx": crate::effects_dialog::effects_json(&it.map(|i| i.effects).unwrap_or_default()),
         "hadEffects": from,
-        "inc": {"fill": from, "stroke": from, "corners": from},
+        "inc": {"fill": from, "stroke": from, "corners": from, "paragraph": from, "textFrame": frame.is_some()},
         "page": "general",
         "apply": from,
     });
+    text_fields(app, &mut fields, None, false, &frame.unwrap_or_default());
     app.ui.dialog = Some(Dialog::new(ID, fields));
 }
 
@@ -45,7 +73,7 @@ pub fn open_edit(app: &mut DesignApp, name: &str) {
     if name == designcraft_doc::NO_OBJECT_STYLE {
         return;
     }
-    let fields = json!({
+    let mut fields = json!({
         "new": false,
         "orig": name,
         "name": name,
@@ -55,10 +83,14 @@ pub fn open_edit(app: &mut DesignApp, name: &str) {
         "corners": os.corners.unwrap_or_default(),
         "fx": crate::effects_dialog::effects_json(&os.effects.clone().unwrap_or_default()),
         "hadEffects": os.effects.is_some(),
-        "inc": {"fill": os.fill.is_some(), "stroke": os.stroke.is_some(), "corners": os.corners.is_some()},
+        "inc": {
+            "fill": os.fill.is_some(), "stroke": os.stroke.is_some(), "corners": os.corners.is_some(),
+            "paragraph": os.paragraph_style.is_some(), "textFrame": os.text_frame.is_some(),
+        },
         "page": "general",
         "apply": false,
     });
+    text_fields(app, &mut fields, os.paragraph_style.as_deref(), os.apply_next_style, &os.text_frame.clone().unwrap_or_default());
     app.ui.dialog = Some(Dialog::new(ID, fields));
 }
 
@@ -85,7 +117,34 @@ fn attrs(d: &Dialog) -> serde_json::Map<String, Value> {
         p.insert(k.into(), if included(d, k) { d.fields.get(k).cloned().unwrap_or(Value::Null) } else { Value::Null });
     }
     p.insert("effects".into(), if sets_effects(d) { d.fields.get("fx").cloned().unwrap_or(Value::Null) } else { Value::Null });
+    let paragraph = d.s("paragraphStyle");
+    p.insert("paragraphStyle".into(), if included(d, "paragraph") && !paragraph.is_empty() { json!(paragraph) } else { Value::Null });
+    p.insert("applyNextStyle".into(), json!(d.b("applyNext")));
     p
+}
+
+/// The Text Frame General Options page as the style's text frame options (the options it doesn't
+/// show as they were), or `None` when the style doesn't set them.
+fn frame_options(d: &Dialog) -> Result<Option<designcraft_doc::TextFrameOptions>, String> {
+    if !included(d, "textFrame") {
+        return Ok(None);
+    }
+    let mut o: designcraft_doc::TextFrameOptions = d.fields.get("tfBase").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+    let bad = |what: &str| format!("Text Frame General Options: {what}");
+    let measure = |key: &str| d.m(key).filter(|v| v.is_finite() && (0.0..=15552.0).contains(v));
+    o.columns = d.n("columns").filter(|n| (1.0..=40.0).contains(n)).ok_or_else(|| bad("the number of columns is 1–40"))? as u32;
+    o.gutter = measure("gutter").ok_or_else(|| bad("the gutter is not a measure"))?;
+    o.columns_kind = serde_json::from_value(json!(d.s("columnsKind"))).unwrap_or(o.columns_kind);
+    if o.columns_kind == designcraft_doc::ColumnsKind::FixedWidth {
+        o.column_width = measure("columnWidth").ok_or_else(|| bad("the column width is not a measure"))?;
+    }
+    o.balance_columns = d.b("balanceColumns");
+    for (side, key) in o.inset.iter_mut().zip(["insetTop", "insetLeft", "insetBottom", "insetRight"]) {
+        *side = measure(key).ok_or_else(|| bad("an inset is not a measure"))?;
+    }
+    o.vertical_justification = serde_json::from_value(json!(d.s("verticalJustification"))).unwrap_or(o.vertical_justification);
+    o.ignore_wrap = d.b("ignoreWrap");
+    Ok(Some(o))
 }
 
 /// OK: the new style (applied to the selection when asked), or the edited one.
@@ -95,6 +154,7 @@ pub fn confirm(app: &mut DesignApp, d: &Dialog) -> Result<Value, String> {
         return Err(crate::i18n::tr(&app.ui.language, "Enter a style name.").to_string());
     }
     let mut p = attrs(d);
+    p.insert("textFrame".into(), frame_options(d)?.map_or(Value::Null, |o| serde_json::to_value(o).unwrap_or_default()));
     if d.b("new") {
         p.insert("name".into(), json!(name));
         p.insert("fromSelection".into(), json!(false));
@@ -118,6 +178,10 @@ pub fn confirm(app: &mut DesignApp, d: &Dialog) -> Result<Value, String> {
         // A style that didn't set effects and still doesn't: nothing to say about them.
         if p.get("effects").is_some_and(Value::is_null) && !d.b("hadEffects") {
             p.remove("effects");
+        }
+        // Apply Next Style means nothing without a paragraph style.
+        if p.get("paragraphStyle").is_some_and(Value::is_null) {
+            p.remove("applyNextStyle");
         }
         app.run("style.object.edit", Value::Object(p)).map_err(|e| e.to_string())
     }
@@ -217,6 +281,24 @@ fn settings(app: &DesignApp, d: &Dialog) -> Vec<String> {
         let shape: designcraft_geom::corners::CornerShape = serde_json::from_value(c["shape"].clone()).unwrap_or_default();
         out.push(format!("{}: {} {} pt", tr("Corner Options"), tr(shape.label()), c["size"].as_f64().unwrap_or(0.0)));
     }
+    let paragraph = d.s("paragraphStyle");
+    if included(d, "paragraph") && !paragraph.is_empty() {
+        let next = if d.b("applyNext") { format!(", {}", tr("Apply Next Style")) } else { String::new() };
+        out.push(format!("{}: {}{next}", tr("Paragraph Styles"), crate::i18n::style_name(&app.ui.language, &paragraph)));
+    }
+    if included(d, "textFrame") {
+        let insets: Vec<String> = ["insetTop", "insetLeft", "insetBottom", "insetRight"].iter().map(|k| d.s(k)).collect();
+        let inset = if insets.iter().all(|i| *i == insets[0]) { insets[0].clone() } else { insets.join(", ") };
+        out.push(format!(
+            "{}: {} {}, {} {}, {}: {inset}",
+            tr("Text Frame General Options"),
+            tr("Columns:"),
+            d.s("columns"),
+            tr("Gutter:"),
+            d.s("gutter"),
+            tr("Inset Spacing")
+        ));
+    }
     if sets_effects(d) {
         let fx = d.fields.get("fx").cloned().unwrap_or(Value::Null);
         let on: Vec<String> =
@@ -314,6 +396,34 @@ fn page_ui(app: &DesignApp, ui: &mut egui::Ui, d: &mut Dialog, page: &str) {
                     }
                 });
             });
+        }
+        "paragraph" => {
+            let Some(doc) = app.session.active().map(|st| &st.doc) else { return };
+            ui.add_enabled_ui(included(d, "paragraph"), |ui| {
+                ui.horizontal(|ui| {
+                    crate::rtl::label(ui, tr("Paragraph Style:"));
+                    let cur = d.s("paragraphStyle");
+                    let shown = if cur.is_empty() { String::new() } else { crate::i18n::style_name(&app.ui.language, &cur).to_string() };
+                    let mut picked = None;
+                    egui::ComboBox::from_id_salt("os_paragraph_style").selected_text(shown).width(240.0).show_ui(ui, |ui| {
+                        for s in &doc.styles.paragraph {
+                            if ui.selectable_label(s.name == cur, crate::i18n::style_name(&app.ui.language, &s.name)).clicked() {
+                                picked = Some(s.name.clone());
+                            }
+                        }
+                    });
+                    if let Some(name) = picked {
+                        d.fields.insert("paragraphStyle".into(), json!(name));
+                    }
+                });
+                let mut next = d.b("applyNext");
+                if ui.checkbox(&mut next, crate::rtl::widget(ui, tr("Apply Next Style"))).changed() {
+                    d.fields.insert("applyNext".into(), json!(next));
+                }
+            });
+        }
+        "textFrame" => {
+            ui.add_enabled_ui(included(d, "textFrame"), |ui| crate::dialogs::general(&app.ui.language, ui, d));
         }
         p => crate::effects_dialog::page_ui(app, ui, d, p),
     }
@@ -414,9 +524,10 @@ mod tests {
         (app, id)
     }
 
+    /// The texts the dialog paints, once its size has settled (it grows over a few frames).
     fn frame(app: &mut DesignApp, ctx: &egui::Context) -> Vec<String> {
         let mut texts = Vec::new();
-        for _ in 0..3 {
+        for _ in 0..8 {
             let input =
                 egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0))), ..Default::default() };
             let mut out = ctx.run_ui(input, |ui| crate::dialogs::show(app, ui.ctx()));
@@ -491,6 +602,81 @@ mod tests {
         assert_eq!((item(&app, a).stroke.weight, item(&app, b).stroke.weight), (5.0, 5.0));
         assert!(doc(&app).styles.object_style(name).unwrap().fill.is_none(), "Fill unchecked: no longer in the style");
         assert!(doc(&app).styles.object_style(name).unwrap().effects.as_ref().unwrap().drop_shadow.on, "effects kept");
+    }
+
+    /// The course's chapter 39: a new object style from a text frame nests the "Drop Cap First
+    /// Paragraph" style (Paragraph Styles page), so the frame's text takes it; Object Style
+    /// Options › Text Frame General Options then gives the style's frames insets and two columns.
+    #[test]
+    fn an_object_style_nests_a_paragraph_style_and_sets_text_frame_options() {
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({})).unwrap();
+        app.run("style.paragraph.create", json!({"name": "Body Text"})).unwrap();
+        app.run("style.paragraph.create", json!({"name": "Drop Cap First Paragraph", "nextStyle": "Body Text", "para": {"dropCapLines": 3}}))
+            .unwrap();
+        let r = app.run("frame.create", json!({"rect": [36, 36, 336, 336], "content": "text", "caret": false})).unwrap();
+        let id = r["id"].as_u64().unwrap();
+        app.run("selection.set", json!({"ids": [id]})).unwrap();
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, "en");
+        open_new(&mut app);
+        let d = app.ui.dialog.as_ref().unwrap();
+        assert!(included(d, "paragraph") && included(d, "textFrame"), "a text frame's categories are in a new style");
+        assert_eq!(d.s("paragraphStyle"), "", "the paragraph style is left to choose");
+        let texts = frame(&mut app, &ctx);
+        for t in ["Paragraph Styles", "Text Frame General Options"] {
+            assert!(texts.iter().any(|x| x.trim() == t), "{t}: {texts:?}");
+        }
+        if let Some(d) = app.ui.dialog.as_mut() {
+            d.fields.insert("name".into(), json!("Text Box Drop Cap"));
+            d.fields.insert("page".into(), json!("paragraph"));
+            d.fields.insert("paragraphStyle".into(), json!("Drop Cap First Paragraph"));
+        }
+        let texts = frame(&mut app, &ctx);
+        for t in ["Paragraph Style:", "Apply Next Style", "Drop Cap First Paragraph"] {
+            assert!(texts.iter().any(|x| x.trim() == t), "{t}: {texts:?}");
+        }
+        crate::dialogs::confirm(&mut app).unwrap();
+        let doc = |app: &DesignApp| app.session.active().unwrap().doc.clone();
+        let story = |app: &DesignApp| {
+            let d = doc(app);
+            let sid = d.item(designcraft_doc::ItemId(id)).unwrap().text_frame().unwrap().story;
+            d.story(sid).unwrap().clone()
+        };
+        assert_eq!(doc(&app).item(designcraft_doc::ItemId(id)).unwrap().object_style, "Text Box Drop Cap");
+        assert_eq!(story(&app).paras[0].style, "Drop Cap First Paragraph", "the frame's text takes the nested style");
+        app.run("type.fillWithPlaceholder", json!({"frame": id})).unwrap();
+        assert!(story(&app).paras.iter().all(|p| p.style == "Drop Cap First Paragraph"));
+
+        open_edit(&mut app, "Text Box Drop Cap");
+        let texts = frame(&mut app, &ctx);
+        assert!(texts.iter().any(|x| x.starts_with("Paragraph Styles: Drop Cap First Paragraph")), "Style Settings: {texts:?}");
+        if let Some(d) = app.ui.dialog.as_mut() {
+            assert_eq!(d.s("paragraphStyle"), "Drop Cap First Paragraph");
+            d.fields.insert("page".into(), json!("textFrame"));
+            for k in ["insetTop", "insetLeft", "insetBottom", "insetRight"] {
+                d.fields.insert(k.into(), json!("4 pt"));
+            }
+            d.fields.insert("columns".into(), json!("2"));
+        }
+        let texts = frame(&mut app, &ctx);
+        for t in ["Inset Spacing", "Vertical Justification", "Ignore Text Wrap"] {
+            assert!(texts.iter().any(|x| x.trim() == t), "{t}: {texts:?}");
+        }
+        crate::dialogs::confirm(&mut app).unwrap();
+        let o = doc(&app).item(designcraft_doc::ItemId(id)).unwrap().text_frame().unwrap().options.clone();
+        assert_eq!((o.columns, o.inset), (2, [4.0; 4]));
+        let os = doc(&app).styles.object_style("Text Box Drop Cap").cloned().unwrap();
+        assert_eq!((os.paragraph_style.as_deref(), os.text_frame.map(|t| t.columns)), (Some("Drop Cap First Paragraph"), Some(2)));
+
+        // A word for the gutter keeps the dialog open with the reason.
+        open_edit(&mut app, "Text Box Drop Cap");
+        if let Some(d) = app.ui.dialog.as_mut() {
+            d.fields.insert("gutter".into(), json!("wide"));
+        }
+        let e = crate::dialogs::confirm(&mut app).unwrap_err();
+        assert!(e.contains("gutter"), "{e}");
+        assert!(app.ui.dialog.is_some());
     }
 
     /// A refused OK (an empty name, a name another style has) keeps the dialog and its edits,

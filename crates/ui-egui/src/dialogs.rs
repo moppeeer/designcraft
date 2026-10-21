@@ -103,7 +103,7 @@ impl Dialog {
             None => String::new(),
         }
     }
-    fn m(&self, k: &str) -> Option<f64> {
+    pub(crate) fn m(&self, k: &str) -> Option<f64> {
         match self.fields.get(k) {
             Some(Value::Number(n)) => n.as_f64(),
             Some(Value::String(s)) => parse_measure(s, self.unit).ok(),
@@ -511,16 +511,29 @@ fn seed_text_frame_options(app: &DesignApp, d: &mut Dialog) {
     }
     let o = selected_frame_options(app).unwrap_or_default();
     let units = app.session.active().map(|s| s.doc.settings.horizontal_units).unwrap_or(Unit::Picas);
+    let shown = text_frame_fields(&o, units, selected_frame_width(app));
+    if let Value::Object(m) = &shown {
+        for (k, v) in m {
+            d.fields.entry(k.clone()).or_insert_with(|| v.clone());
+        }
+    }
+    d.fields.entry("insetLinked".to_string()).or_insert_with(|| json!(o.inset.iter().all(|v| (v - o.inset[0]).abs() < 1e-9)));
+    d.fields.insert("_shown".into(), shown);
+}
+
+/// Text frame options `o` as the Text Frame Options dialog's fields, measures in `units`; with the
+/// frame's width, a Fixed Number column shows the width it gets.
+pub(crate) fn text_frame_fields(o: &designcraft_doc::TextFrameOptions, units: Unit, frame_width: Option<f64>) -> Value {
     let fm = |v: f64| json!(format_measure(v, units));
     // Fixed Number: the width each column gets in the frame (shown, as in InDesign).
-    let inner = selected_frame_width(app).map(|w| w - o.inset[1] - o.inset[3]).unwrap_or(0.0);
+    let inner = frame_width.map(|w| w - o.inset[1] - o.inset[3]).unwrap_or(0.0);
     let n = o.columns.max(1) as f64;
     let width = match o.columns_kind {
         designcraft_doc::ColumnsKind::FixedWidth if o.column_width > 0.0 => o.column_width,
         _ => ((inner - o.gutter * (n - 1.0)) / n).max(0.0),
     };
     let kind = |v: Value| v.as_str().unwrap_or_default().to_string();
-    let shown = json!({
+    json!({
         "columns": o.columns, "gutter": fm(o.gutter),
         "columnsKind": kind(serde_json::to_value(o.columns_kind).unwrap_or_default()), "columnWidth": fm(width),
         "balanceColumns": o.balance_columns, "ignoreWrap": o.ignore_wrap,
@@ -535,14 +548,7 @@ fn seed_text_frame_options(app: &DesignApp, d: &mut Dialog) {
         "useMinimumHeight": o.auto_size_use_min_height, "minimumHeight": fm(o.auto_size_min_height),
         "useMinimumWidth": o.auto_size_use_min_width, "minimumWidth": fm(o.auto_size_min_width),
         "noLineBreaks": o.auto_size_no_line_breaks,
-    });
-    if let Value::Object(m) = &shown {
-        for (k, v) in m {
-            d.fields.entry(k.clone()).or_insert_with(|| v.clone());
-        }
-    }
-    d.fields.entry("insetLinked".to_string()).or_insert_with(|| json!(o.inset.iter().all(|v| (v - o.inset[0]).abs() < 1e-9)));
-    d.fields.insert("_shown".into(), shown);
+    })
 }
 
 /// A 0..1 tint as a percentage ("40", "12.5").
@@ -595,7 +601,7 @@ fn text_frame_options_dialog(app: &DesignApp, ui: &mut egui::Ui, d: &mut Dialog)
 }
 
 /// Text Frame Options › General: columns, inset spacing, vertical justification, text wrap.
-fn general(lang: &str, ui: &mut egui::Ui, d: &mut Dialog) {
+pub(crate) fn general(lang: &str, ui: &mut egui::Ui, d: &mut Dialog) {
     let tr = |s: &'static str| crate::i18n::tr(lang, s);
     crate::rtl::label(ui, egui::RichText::new(tr("Columns")).font(semibold(12.0)));
     egui::Grid::new("tfo_cols").num_columns(4).spacing([8.0, 6.0]).show(ui, |ui| {
