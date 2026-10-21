@@ -31,6 +31,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "ამოჭრა"),
     ("Copy", "კოპირება"),
     ("Paste", "ჩასმა"),
+    ("Images", "გამოსახულებები"),
     ("Mixed Objects", "შერეული ობიექტები"),
     ("Text Frames", "ტექსტის ჩარჩოები"),
     ("Linked Files", "დაკავშირებული ფაილები"),

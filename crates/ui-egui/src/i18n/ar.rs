@@ -30,6 +30,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "قص"),
     ("Copy", "نسخ"),
     ("Paste", "لصق"),
+    ("Images", "الصور"),
     ("Mixed Objects", "كائنات مختلطة"),
     ("Text Frames", "إطارات نص"),
     ("Linked Files", "ملفات مرتبطة"),

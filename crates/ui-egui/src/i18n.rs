@@ -36,6 +36,7 @@ pub const LANGUAGES: &[(&str, &str)] = &[
 
 /// English → [German, French, Spanish, Japanese, Simplified Chinese].
 const TABLE: &[(&str, [&str; 5])] = &[
+    ("Images", ["Bilder", "Images", "Imágenes", "画像", "图像"]),
     // Menus.
     ("File", ["Datei", "Fichier", "Archivo", "ファイル", "文件"]),
     ("Edit", ["Bearbeiten", "Édition", "Edición", "編集", "编辑"]),

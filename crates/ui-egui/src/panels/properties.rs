@@ -61,12 +61,15 @@ fn selection_title(app: &DesignApp, info: &Option<SelInfo>) -> String {
     }
     match info {
         None => crate::i18n::tr(&app.ui.language, "No Selection").into(),
-        // Several objects, named as InDesign names them: "Text Frames", "Linked Files" or "Frames"
-        // (empty graphic frames) when all are of that kind, "Mixed Objects" when the kinds differ.
+        // Several objects, named as InDesign names them: "Text Frames", "Linked Files" (pictures
+        // placed from files), "Images" (embedded ones) or "Frames" (empty graphic frames) when all
+        // are of that kind, "Mixed Objects" when the kinds differ.
         Some(i) if i.count > 1 => {
             let kind = |it: &designcraft_doc::Item| {
                 if it.object_style == designcraft_doc::BASIC_GRAPHICS_FRAME && matches!(it.content, designcraft_doc::Content::Unassigned) {
                     "<graphic frame>"
+                } else if it.graphic().and_then(|g| st.doc.assets.get(&g.asset)).is_some_and(|a| a.link.is_some()) {
+                    "<linked image>"
                 } else {
                     it.default_label()
                 }
@@ -76,7 +79,8 @@ fn selection_title(app: &DesignApp, info: &Option<SelInfo>) -> String {
             let title = match first {
                 _ if !kinds.all(|k| k == first) => "Mixed Objects",
                 Some("<text frame>") => "Text Frames",
-                Some("<image>") => "Linked Files",
+                Some("<linked image>") => "Linked Files",
+                Some("<image>") => "Images",
                 Some("<graphic frame>") => "Frames",
                 _ => "Multiple Objects",
             };
@@ -3481,15 +3485,24 @@ mod tests {
             app.run("file.place", json!({"base64": b64, "name": "a.png", "frame": f})).unwrap();
             pics.push(f);
         }
-        assert_eq!(title(&mut app, pics.clone()), "Linked Files");
-        // One embedded picture is an image; one placed from a file, as in the tutorial, a linked file.
+        // Embedded pictures (placed from bytes) are images; ones placed from files, as in the
+        // tutorial, linked files; some of each, mixed.
+        assert_eq!(title(&mut app, pics.clone()), "Images");
         assert_eq!(title(&mut app, vec![pics[0]]), "Image");
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("snowflake.png");
         std::fs::write(&path, &png).unwrap();
-        let f = app.run("frame.create", json!({"rect": [300, 320, 400, 420], "content": "graphic"})).unwrap()["id"].as_u64().unwrap();
-        app.run("file.place", json!({"path": path.to_string_lossy(), "frame": f})).unwrap();
-        assert_eq!(title(&mut app, vec![f]), "Linked File");
+        let linked: Vec<u64> = [320, 440]
+            .into_iter()
+            .map(|y| {
+                let f = app.run("frame.create", json!({"rect": [300, y, 400, y + 100], "content": "graphic"})).unwrap()["id"].as_u64().unwrap();
+                app.run("file.place", json!({"path": path.to_string_lossy(), "frame": f})).unwrap();
+                f
+            })
+            .collect();
+        assert_eq!(title(&mut app, vec![linked[0]]), "Linked File");
+        assert_eq!(title(&mut app, linked.clone()), "Linked Files");
+        assert_eq!(title(&mut app, vec![linked[0], pics[0]]), "Mixed Objects");
     }
 
     #[test]

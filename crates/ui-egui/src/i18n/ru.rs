@@ -33,6 +33,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "Вырезать"),
     ("Copy", "Копировать"),
     ("Paste", "Вставить"),
+    ("Images", "Изображения"),
     ("Mixed Objects", "Смешанные объекты"),
     ("Text Frames", "Текстовые фреймы"),
     ("Linked Files", "Связанные файлы"),

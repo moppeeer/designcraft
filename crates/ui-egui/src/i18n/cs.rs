@@ -31,6 +31,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "Vyjmout"),
     ("Copy", "Kopírovat"),
     ("Paste", "Vložit"),
+    ("Images", "Obrazy"),
     ("Mixed Objects", "Smíšené objekty"),
     ("Text Frames", "Textové rámečky"),
     ("Linked Files", "Propojené soubory"),
