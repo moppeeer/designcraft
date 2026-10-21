@@ -198,10 +198,15 @@ fn bottom_bar(app: &mut DesignApp, ui: &mut egui::Ui, para: bool, current: Optio
             }
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // Delete: the selected style (the text's, or the one picked in the panel).
+            // Delete: the selected style (the text's, or the one picked in the panel). It deletes
+            // one style, so with several picked it is off rather than deleting another.
             let names = app.session.active().map(|st| style_names(&st.doc, para)).unwrap_or_default();
             let picked = picked(ui, para, &names);
-            let target = picked.first().cloned().filter(|_| picked.len() == 1).or_else(|| current.map(str::to_string));
+            let target = match picked.len() {
+                0 => current.map(str::to_string),
+                1 => picked.first().cloned(),
+                _ => None,
+            };
             let deletable = target.as_deref().is_some_and(|n| !n.starts_with('['));
             let delete_label = tr(if para { "Delete Paragraph Style…" } else { "Delete Character Style…" });
             if ui.add_enabled_ui(deletable, |ui| icons::button(ui, "trash", 20.0, false, &delete_label)).inner.clicked()
@@ -290,7 +295,7 @@ fn style_row(
     if resp.double_clicked() && editable {
         crate::dialogs::open_style_options(app, para, n);
     } else if resp.clicked() && add {
-        // Ctrl/Cmd- or Shift-click: one more (or one fewer) picked, to move or delete together.
+        // Ctrl/Cmd- or Shift-click: one more (or one fewer) picked, to move together.
         let mut picked: Vec<String> = if picked.is_empty() { current.map(|c| vec![c.to_string()]).unwrap_or_default() } else { picked.to_vec() };
         match picked.iter().position(|p| p == n) {
             Some(i) => {
@@ -565,6 +570,45 @@ mod tests {
         h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
         let d = h.state().ui.dialog.clone().expect("New Paragraph Style");
         assert_eq!((d.id.as_str(), d.b("new")), ("paragraphStyleOptions", true));
+    }
+
+    /// Delete removes one style: with the text's style and a Ctrl-clicked one picked, it is off
+    /// rather than deleting the text's style; with one picked it deletes that one.
+    #[test]
+    fn delete_is_off_with_several_styles_picked() {
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({})).unwrap();
+        for n in ["Bullets", "Recipe titles"] {
+            app.run("style.paragraph.create", json!({"name": n, "fromSelection": false})).unwrap();
+        }
+        let f = app.run("frame.create", json!({"rect": [36, 36, 300, 200], "content": "text", "text": "Eggs"})).unwrap();
+        app.run("text.select", json!({"story": f["story"], "anchor": 0, "focus": 4})).unwrap();
+        app.run("style.paragraph.apply", json!({"name": "Recipe titles"})).unwrap();
+        let mut h = Harness::builder().with_size(vec2(320.0, 420.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+            |ui, app: &mut DesignApp| {
+                let id = egui::Id::new("styles_test_fonts");
+                if ui.data(|d| d.get_temp::<bool>(id)).is_none() {
+                    crate::theme::install_fonts(ui.ctx(), "");
+                    ui.data_mut(|d| d.insert_temp(id, true));
+                    return;
+                }
+                paragraph(app, ui);
+            },
+            app,
+        );
+        h.run_steps(3);
+        let delete_off = |h: &Harness<'_, DesignApp>| h.get_by_label("Delete Paragraph Style…").accesskit_node().is_disabled();
+        assert!(!delete_off(&h), "the text's style can be deleted");
+        // Ctrl-click: Bullets picked with the text's Recipe titles.
+        let at = h.get_by_label("Bullets").rect().center();
+        h.hover_at(at);
+        h.event(egui::Event::ModifiersChanged(egui::Modifiers::COMMAND));
+        h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::COMMAND });
+        h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::COMMAND });
+        h.run_steps(2);
+        h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+        h.run_steps(2);
+        assert!(delete_off(&h), "two picked: Delete is off");
     }
 
     #[test]
