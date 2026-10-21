@@ -1113,6 +1113,9 @@ fn image_actions(app: &mut DesignApp, ui: &mut Ui, hw: f32) {
         st.doc.assets.get(&g.asset).map(|a| (a.id, a.link.clone()))
     });
     let link = asset.as_ref().and_then(|(_, l)| l.clone()).filter(|l| !l.is_empty());
+    // Edit Original and Reveal need the system's opener: a browser won't open file:// URLs, so
+    // the web build greys them out.
+    let can_open = link.is_some() && app.services.open_path.is_some();
     let reveal = if cfg!(target_os = "macos") {
         "Reveal in Finder"
     } else if cfg!(target_os = "windows") {
@@ -1130,7 +1133,7 @@ fn image_actions(app: &mut DesignApp, ui: &mut Ui, hw: f32) {
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
-        ui.add_enabled_ui(link.is_some(), |ui| {
+        ui.add_enabled_ui(can_open, |ui| {
             clicked[2] = outline_button(ui, &edit, hw).clicked();
             clicked[3] = outline_button(ui, &show, hw).clicked();
         });
@@ -1157,37 +1160,13 @@ fn image_actions(app: &mut DesignApp, ui: &mut Ui, hw: f32) {
                 return;
             }
         };
-        let reveal = clicked[3];
-        match app.services.open_path.as_mut() {
-            // The system's opener: the file in its application, or selected in the file manager.
-            Some(open) => {
-                if let Err(e) = open(&file, reveal) {
-                    app.status(e);
-                }
-            }
-            // No opener (the web build): the file's URL, or its folder's.
-            None => {
-                let target = if reveal { file.parent().map(std::path::Path::to_path_buf).unwrap_or_default() } else { file };
-                app.ui.pending_urls.push(file_url(&target));
-            }
+        // The system's opener: the file in its application, or selected in the file manager.
+        if let Some(open) = app.services.open_path.as_mut()
+            && let Err(e) = open(&file, clicked[3])
+        {
+            app.status(e);
         }
     }
-}
-
-/// A `file://` URL for `path`, its separators as slashes and URL-special characters escaped.
-fn file_url(path: &std::path::Path) -> String {
-    let p = path.to_string_lossy().replace('\\', "/");
-    let mut out = String::from(if p.starts_with('/') { "file://" } else { "file:///" });
-    for c in p.chars() {
-        match c {
-            ' ' => out.push_str("%20"),
-            '#' => out.push_str("%23"),
-            '%' => out.push_str("%25"),
-            '?' => out.push_str("%3F"),
-            c => out.push(c),
-        }
-    }
-    out
 }
 
 // ---------------------------------------------------------------- Text
@@ -3516,13 +3495,23 @@ mod tests {
         assert_eq!(got.0, path, "the file beside the document: {:?}", got.0);
     }
 
-    /// Without a system opener (the web build), the file's URL: separators as slashes, spaces
-    /// escaped.
+    /// Without a system opener (the web build), Edit Original and Reveal grey out: a browser
+    /// won't open a file:// URL. Embed still works.
     #[test]
-    fn a_linked_file_url_escapes_its_path() {
-        let url = file_url(std::path::Path::new("C:\\Docs\\my photo#1.png"));
-        assert_eq!(url, "file:///C:/Docs/my%20photo%231.png");
-        assert_eq!(file_url(std::path::Path::new("/home/a b.png")), "file:///home/a%20b.png");
+    fn without_an_opener_the_linked_file_actions_grey_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.png");
+        std::fs::write(&path, designcraft_render::Rendered { width: 4, height: 4, pixels: vec![200; 64] }.to_png()).unwrap();
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({})).unwrap();
+        let id = app.run("frame.create", json!({"rect": [72, 72, 272, 172]})).unwrap()["id"].as_u64().unwrap();
+        app.run("file.place", json!({"path": path.to_string_lossy(), "frame": id, "link": true})).unwrap();
+        app.run("selection.set", json!({"ids": [id]})).unwrap();
+        let h = panel(app);
+        use egui_kittest::kittest::NodeT;
+        assert!(h.get_by_label("Edit Original").accesskit_node().is_disabled());
+        assert!(!h.get_by_label("Embed").accesskit_node().is_disabled());
+        assert!(h.state().ui.pending_urls.is_empty());
     }
 
     const CYAN: &str = "C=100 M=0 Y=0 K=0";
