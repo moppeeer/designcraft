@@ -71,10 +71,11 @@ fn included(d: &Dialog, key: &str) -> bool {
     d.fields.get("inc").and_then(|i| i[key].as_bool()).unwrap_or(false)
 }
 
-/// Whether the style sets effects: it did, or one is on now.
+/// Whether the style sets effects: one is on now, or (editing) the style set them already. A new
+/// style with every effect off sets none, so applying it leaves the objects' own effects.
 fn sets_effects(d: &Dialog) -> bool {
     let fx = d.fields.get("fx").cloned().unwrap_or(Value::Null);
-    d.b("hadEffects") || crate::effects_dialog::PAGES.iter().skip(1).any(|(k, _)| crate::effects_dialog::is_on(&fx, k))
+    (!d.b("new") && d.b("hadEffects")) || crate::effects_dialog::PAGES.iter().skip(1).any(|(k, _)| crate::effects_dialog::is_on(&fx, k))
 }
 
 /// The style's attributes as the commands take them (null: not in the style).
@@ -387,6 +388,23 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A new style made from an object with no effect on sets no effects, so applying it keeps
+    /// other objects' own.
+    #[test]
+    fn a_new_style_without_effects_on_sets_none() {
+        let (mut app, _) = app_with_frame();
+        open_new(&mut app);
+        let d = app.ui.dialog.clone().unwrap();
+        assert!(d.b("hadEffects"));
+        assert_eq!(attrs(&d)["effects"], Value::Null);
+        if let Some(d) = app.ui.dialog.as_mut() {
+            d.fields.insert("name".into(), json!("Plain"));
+            d.fields.insert("apply".into(), json!(false));
+        }
+        crate::dialogs::confirm(&mut app).unwrap();
+        assert!(app.session.doc().unwrap().doc.styles.object_style("Plain").unwrap().effects.is_none());
+    }
 
     fn app_with_frame() -> (DesignApp, u64) {
         let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());

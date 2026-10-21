@@ -105,15 +105,20 @@ pub fn character(app: &mut DesignApp, ui: &mut egui::Ui) {
     list(app, ui, false);
 }
 
-/// The selected object's style, and whether the object differs from it (an override: `+`).
+/// The selected object's style, and whether the object differs from it (an override: `+`): its
+/// own attributes, or a text frame's paragraphs in another style than the object style's.
 fn object_style_of_selection(app: &DesignApp) -> Option<(String, bool)> {
     let st = app.session.active()?;
     let it = st.selection.items.first().and_then(|i| st.doc.item(*i))?;
     let mut styled = it.clone();
+    let mut over = false;
     if let Some(os) = st.doc.styles.object_style(&it.object_style) {
         os.apply_to(&mut styled);
+        if let (Some(ps), Some(tf)) = (&os.paragraph_style, it.text_frame()) {
+            over = st.doc.story(tf.story).is_some_and(|s| s.paras.iter().any(|f| f.style != *ps));
+        }
     }
-    Some((it.object_style.clone(), styled != *it))
+    Some((it.object_style.clone(), over || styled != *it))
 }
 
 /// Window › Styles › Object Styles, as InDesign's: the selected object's style on top (`+` when
@@ -306,6 +311,26 @@ mod tests {
     use egui_kittest::{Harness, kittest::Queryable};
 
     use super::*;
+
+    /// A text frame whose paragraphs left its object style's paragraph style shows the override
+    /// mark, and Clear Overrides puts them back.
+    #[test]
+    fn a_paragraph_style_change_is_an_object_style_override() {
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), Default::default());
+        app.run("file.new", serde_json::json!({})).unwrap();
+        app.run("style.paragraph.create", serde_json::json!({"name": "Caption"})).unwrap();
+        app.run("style.object.create", serde_json::json!({"name": "Captioned", "fromSelection": false, "paragraphStyle": "Caption"})).unwrap();
+        let f = app.run("frame.create", serde_json::json!({"rect": [36, 36, 300, 200], "content": "text", "text": "One"})).unwrap();
+        app.run("style.object.apply", serde_json::json!({"name": "Captioned", "ids": [f["id"]]})).unwrap();
+        app.run("selection.set", serde_json::json!({"ids": [f["id"]]})).unwrap();
+        assert_eq!(object_style_of_selection(&app), Some(("Captioned".into(), false)));
+        app.run("text.select", serde_json::json!({"story": f["story"], "anchor": 0, "focus": 3})).unwrap();
+        app.run("style.paragraph.apply", serde_json::json!({"name": designcraft_doc::BASIC_PARAGRAPH})).unwrap();
+        app.run("selection.set", serde_json::json!({"ids": [f["id"]]})).unwrap();
+        assert_eq!(object_style_of_selection(&app), Some(("Captioned".into(), true)), "the + mark");
+        app.run("style.object.clearOverrides", serde_json::json!({})).unwrap();
+        assert_eq!(object_style_of_selection(&app), Some(("Captioned".into(), false)));
+    }
 
     #[test]
     fn selected_style_context_menu_redefines_its_format() {
