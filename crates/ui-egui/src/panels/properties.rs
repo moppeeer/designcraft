@@ -2513,7 +2513,8 @@ pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
                     p["path"] = json!(path);
                     // As InDesign's Search for Missing Links in This Folder: the other missing
                     // links are looked for in the folder the new file came from.
-                    let others_missing = rows.iter().any(|r| row_id(r) != aid && r["status"] == "missing");
+                    // Only placed graphics: `links.relinkFolder` doesn't look for linked text files.
+                    let others_missing = rows.iter().any(|r| row_id(r) != aid && r["asset"].is_u64() && r["status"] == "missing");
                     if app.run("links.relink", p).is_ok() && others_missing {
                         relink_missing_from_folder(app, &path);
                     }
@@ -2537,7 +2538,9 @@ pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
                 && let Some(dir) = std::path::Path::new(&path).parent()
                 && let Ok(v) = app.run("links.relinkFolder", json!({"dir": dir.to_string_lossy()}))
             {
-                app.status(crate::i18n::tr(&lang, "Relinked {count}").replace("{count}", &v["relinked"].to_string()));
+                let n = v["relinked"].as_u64().unwrap_or(0);
+                let message = crate::i18n::tr(&lang, "Searched this relink directory, and found and relinked {count} missing links.");
+                app.status(message.replace("{count}", &n.to_string()));
             }
         }
         Some("updateAll") => update_links(app, json!({})),
@@ -3324,6 +3327,34 @@ mod tests {
         }
         let d = h.state().ui.dialog.clone().expect("an alert says how many were found");
         assert!(d.s("message").contains("relinked 2 missing links"), "{}", d.s("message"));
+    }
+
+    /// A missing linked text file doesn't set off the folder search after a relink: that only
+    /// looks for pictures, so there'd be nothing to report.
+    #[test]
+    fn a_missing_text_link_alone_starts_no_folder_search() {
+        let dir = tempfile::tempdir().unwrap();
+        let png = designcraft_render::Rendered { width: 8, height: 8, pixels: vec![120; 8 * 8 * 4] }.to_png();
+        let (gone, found) = (dir.path().join("gone.png"), dir.path().join("found.png"));
+        std::fs::write(&gone, &png).unwrap();
+        let text = dir.path().join("notes.txt");
+        std::fs::write(&text, "Notes").unwrap();
+        let picked = found.to_string_lossy().to_string();
+        let services = crate::Services { pick_open: Some(Box::new(move |_| Some(picked.clone()))), ..Default::default() };
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), services);
+        app.run("file.new", json!({})).unwrap();
+        let f = app.run("frame.create", json!({"rect": [72, 72, 172, 172]})).unwrap()["id"].as_u64().unwrap();
+        app.run("file.place", json!({"path": gone.to_string_lossy(), "frame": f})).unwrap();
+        app.run("file.place", json!({"path": text.to_string_lossy(), "link": true, "rect": [72, 300, 300, 400]})).unwrap();
+        std::fs::rename(&gone, &found).unwrap();
+        std::fs::remove_file(&text).unwrap();
+        let mut h = links_harness(app, 320.0);
+        assert_eq!(h.get_all_by_label("Missing").count(), 2, "the picture and the text file");
+        h.get_by_label("gone.png").click();
+        h.run_steps(3);
+        h.get_by_label("Relink…").click();
+        h.run_steps(3);
+        assert!(h.state().ui.dialog.is_none(), "no 'relinked 0' alert");
     }
 
     /// Long names are shortened in the middle, keeping the start and the extension.
