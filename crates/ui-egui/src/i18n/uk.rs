@@ -32,7 +32,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Information", "Відомості"),
     (
         "Searched this relink directory, and found and relinked {count} missing links.",
-        "Цю папку переглянуто: знайдено й наново пов’язано {count} відсутніх зв’язків.",
+        "Цю папку переглянуто. Знайдено й наново пов’язано відсутніх зв’язків: {count}.",
     ),
     ("{count} Selected", "Вибрано: {count}"),
     ("Update All Links", "Оновити всі зв’язки"),

@@ -40,9 +40,9 @@ const TABLE: &[(&str, [&str; 5])] = &[
     (
         "Searched this relink directory, and found and relinked {count} missing links.",
         [
-            "Dieser Ordner wurde durchsucht; {count} fehlende Verknüpfungen wurden gefunden und neu verknüpft.",
-            "Ce dossier a été parcouru : {count} liens manquants ont été trouvés et rétablis.",
-            "Se buscó en esta carpeta y se encontraron y volvieron a vincular {count} vínculos que faltaban.",
+            "Dieser Ordner wurde durchsucht. Gefundene und neu verknüpfte fehlende Verknüpfungen: {count}.",
+            "Ce dossier a été parcouru. Liens manquants trouvés et rétablis : {count}.",
+            "Se buscó en esta carpeta. Vínculos que faltaban encontrados y vueltos a vincular: {count}.",
             "このフォルダーを検索し、見つからなかったリンクを {count} 個見つけて再リンクしました。",
             "已搜索此文件夹，找到并重新链接了 {count} 个缺失的链接。",
         ],

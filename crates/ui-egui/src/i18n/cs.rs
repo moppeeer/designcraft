@@ -34,7 +34,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Information", "Informace"),
     (
         "Searched this relink directory, and found and relinked {count} missing links.",
-        "Tato složka byla prohledána: nalezeno a znovu propojeno {count} chybějících propojení.",
+        "Tato složka byla prohledána. Nalezená a znovu propojená chybějící propojení: {count}.",
     ),
     ("{count} Selected", "Vybráno: {count}"),
     ("Update All Links", "Aktualizovat všechna propojení"),

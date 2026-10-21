@@ -34,9 +34,9 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Information", "Informações"),
     (
         "Searched this relink directory, and found and relinked {count} missing links.",
-        "Esta pasta foi pesquisada: {count} vínculos ausentes foram encontrados e vinculados novamente.",
+        "Esta pasta foi pesquisada. Vínculos ausentes encontrados e vinculados novamente: {count}.",
     ),
-    ("{count} Selected", "{count} selecionado(s)"),
+    ("{count} Selected", "Selecionados: {count}"),
     ("Update All Links", "Atualizar todos os vínculos"),
     ("More Link Options", "Mais opções de vínculo"),
     ("Link Info", "Informações do vínculo"),
