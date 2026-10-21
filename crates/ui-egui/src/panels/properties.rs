@@ -2696,24 +2696,27 @@ fn paint_link_status(p: &egui::Painter, r: Rect, status: &str, t: &Tokens) {
     }
 }
 
-/// A linked graphic's thumbnail for the Links panel, cached per image data.
+/// A linked graphic's thumbnail for the Links panel, cached per image data. Data that doesn't
+/// decode is cached too (as none), so its row doesn't decode it again every frame.
 fn link_thumb(ctx: &egui::Context, doc: &designcraft_doc::Document, aid: u64) -> Option<egui::TextureHandle> {
     let a = doc.assets.get(&designcraft_doc::AssetId(aid))?;
-    let key = egui::Id::new(("link_thumb", std::sync::Arc::as_ptr(&a.data) as usize, a.data.len(), a.page));
-    if let Some(t) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(key)) {
-        return Some(t);
+    let key = link_thumb_key(a);
+    if let Some(t) = ctx.data(|d| d.get_temp::<Option<egui::TextureHandle>>(key)) {
+        return t;
     }
     let w = a.pixels.map_or(256.0, |(w, _)| f64::from(w).max(1.0));
-    let pm = designcraft_render::images::mip(&a.data, a.page, w, 36.0 / w)?;
-    let (pw, ph) = (pm.width() as usize, pm.height() as usize);
-    if pw == 0 || ph == 0 {
-        return None;
-    }
-    let ci = egui::ColorImage::from_rgba_premultiplied([pw, ph], pm.data_as_u8_slice());
-    let max = ctx.input(|i| i.max_texture_side).min(1024);
-    let t = ctx.load_texture("link_thumb", crate::widgets::fit_texture(ci, max), egui::TextureOptions::LINEAR);
+    let t = designcraft_render::images::mip(&a.data, a.page, w, 36.0 / w).filter(|pm| pm.width() > 0 && pm.height() > 0).map(|pm| {
+        let ci = egui::ColorImage::from_rgba_premultiplied([pm.width() as usize, pm.height() as usize], pm.data_as_u8_slice());
+        let max = ctx.input(|i| i.max_texture_side).min(1024);
+        ctx.load_texture("link_thumb", crate::widgets::fit_texture(ci, max), egui::TextureOptions::LINEAR)
+    });
     ctx.data_mut(|d| d.insert_temp(key, t.clone()));
-    Some(t)
+    t
+}
+
+/// The cache key of an asset's Links panel thumbnail: its data and page.
+fn link_thumb_key(a: &designcraft_doc::Asset) -> egui::Id {
+    egui::Id::new(("link_thumb", std::sync::Arc::as_ptr(&a.data) as usize, a.data.len(), a.page))
 }
 
 /// Update Link from the Links panel or the menu (`{asset}`, `{story}`, or `{}` for all): asks
@@ -3175,6 +3178,34 @@ mod tests {
     }
 
     /// With the caret in text, the Stroke panel offers the text's stroke options, not an empty panel.
+    /// A link whose data doesn't decode has no thumbnail, and that is remembered: the next frame
+    /// reads the cache rather than decoding it again.
+    #[test]
+    fn an_undecodable_link_thumbnail_is_cached_as_none() {
+        use designcraft_doc::{Asset, AssetId};
+        let mut s = designcraft_engine::Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let mut doc = (*s.doc().unwrap().doc).clone();
+        let aid = AssetId(doc.alloc());
+        let a = Asset {
+            id: aid,
+            name: "broken.png".into(),
+            mime: "image/png".into(),
+            data: std::sync::Arc::new(b"not a png".to_vec()),
+            ..Default::default()
+        };
+        doc.assets.insert(aid, std::sync::Arc::new(a));
+        let ctx = egui::Context::default();
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let ctx = ui.ctx();
+            assert!(super::link_thumb(ctx, &doc, aid.0).is_none());
+            let key = super::link_thumb_key(&doc.assets[&aid]);
+            assert!(ctx.data(|d| d.get_temp::<Option<egui::TextureHandle>>(key)).is_some_and(|t| t.is_none()), "cached as none");
+            assert!(super::link_thumb(ctx, &doc, aid.0).is_none());
+        });
+        out.textures_delta.clear();
+    }
+
     #[test]
     fn stroke_panel_shows_the_text_stroke_options_while_text_is_selected() {
         let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
