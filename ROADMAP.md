@@ -348,6 +348,7 @@ list) · [roadmap.md](docs/roadmap.md) (milestones, plan) · [parity-checklist.m
 
 Newest first.
 
+- **2026-10-21** · Properties › Appearance › fx is InDesign's effects menu: Transparency…, the nine effects (each opens the Effects dialog on it), Clear Effects, Clear All Transparency and Global Light…; the effect applied shows beside the button, a link to it in the dialog. It used to toggle a drop shadow. Found in the Learn Skills Daily course, chapter 14. No readiness percentage change.
 - **2026-10-13** · The Effects panel lists its levels as InDesign does: Object (or Group) with an fx badge when it has effects, which opens the Effects dialog, and Stroke, Fill and Text greyed. Its drop-shadow fields gave way to the dialog, and its bottom row has Clear All Effects (opaque again), the fx menu and Remove Effects (`object.clearEffects {opaque?}`). No readiness percentage change.
 
 - **2026-10-16** · Type › Reload Fonts (`font.reload`): fonts installed, edited or removed while DesignCraft runs are read again without a restart, and the open documents recompose with them (#328, #547). An edited font file is noticed by its length and modification time; bundled, added and document fonts stay as they are. InDesign does this by itself, so noticing changes automatically is still open (gap 6). No readiness percentage change.

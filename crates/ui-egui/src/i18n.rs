@@ -36,6 +36,11 @@ pub const LANGUAGES: &[(&str, &str)] = &[
 
 /// English → [German, French, Spanish, Japanese, Simplified Chinese].
 const TABLE: &[(&str, [&str; 5])] = &[
+    ("Clear Effects", ["Effekte löschen", "Effacer les effets", "Borrar efectos", "効果をクリア", "清除效果"]),
+    (
+        "Clear All Transparency",
+        ["Alle Transparenzen löschen", "Effacer toute la transparence", "Borrar toda la transparencia", "すべての透明をクリア", "清除全部透明度"],
+    ),
     // Menus.
     ("File", ["Datei", "Fichier", "Archivo", "ファイル", "文件"]),
     ("Edit", ["Bearbeiten", "Édition", "Edición", "編集", "编辑"]),

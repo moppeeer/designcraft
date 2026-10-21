@@ -31,6 +31,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "ამოჭრა"),
     ("Copy", "კოპირება"),
     ("Paste", "ჩასმა"),
+    ("Clear Effects", "ეფექტების გასუფთავება"),
+    ("Clear All Transparency", "მთელი გამჭვირვალობის გასუფთავება"),
     ("Inches Decimal", "ინჩები (ათობითი)"),
     ("Back", "უკან"),
     ("Warning", "გაფრთხილება"),

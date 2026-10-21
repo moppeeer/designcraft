@@ -31,6 +31,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "Ausschneiden"),
     ("Copy", "Kopieren"),
     ("Paste", "Einfügen"),
+    ("Clear Effects", "Effekte löschen"),
+    ("Clear All Transparency", "Alle Transparenzen löschen"),
     ("Inches Decimal", "Zoll dezimal"),
     ("Back", "Zurück"),
     ("Warning", "Warnung"),

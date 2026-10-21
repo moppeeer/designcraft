@@ -30,6 +30,8 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "カット"),
     ("Copy", "コピー"),
     ("Paste", "ペースト"),
+    ("Clear Effects", "効果をクリア"),
+    ("Clear All Transparency", "すべての透明をクリア"),
     ("Paste Vector Art", "ベクトルアートをペースト"),
     ("Baseline Options", "ベースラインオプション"),
     ("Column Rules", "段落境界線"),
