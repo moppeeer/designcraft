@@ -9,11 +9,7 @@ use crate::{DesignApp, icons};
 fn list(app: &mut DesignApp, ui: &mut egui::Ui, para: bool) {
     let t = Tokens::get(ui.ctx());
     let Some(st) = app.session.active() else { return };
-    let names: Vec<String> = if para {
-        st.doc.styles.paragraph.iter().map(|s| s.name.clone()).collect()
-    } else {
-        st.doc.styles.character.iter().map(|s| s.name.clone()).collect()
-    };
+    let names = style_names(&st.doc, para);
     let groups = st.doc.styles.style_groups(para);
     let attrs = super::text_attrs(app);
     let current = attrs.as_ref().and_then(|a| a[if para { "paragraphStyle" } else { "characterStyle" }].as_str().map(str::to_string));
@@ -37,7 +33,7 @@ fn list(app: &mut DesignApp, ui: &mut egui::Ui, para: bool) {
         .color(t.text_dim),
     );
     // Groups as folders (those of `Group/Name` names and the empty ones), ungrouped styles first.
-    let picked: Vec<String> = ui.data(|d| d.get_temp(picked_id(para))).unwrap_or_default();
+    let picked = picked(ui, para, &names);
     for n in names.iter().filter(|n| !n.contains('/')) {
         if para && n == designcraft_doc::NO_PARA_STYLE {
             continue;
@@ -53,22 +49,50 @@ fn list(app: &mut DesignApp, ui: &mut egui::Ui, para: bool) {
     }
     // A drop below the styles takes them out of their group.
     let (rest, rest_resp) = ui.allocate_exact_size(vec2(ui.available_width(), 18.0), Sense::hover());
-    if rest_resp.dnd_hover_payload::<StyleDrag>().is_some() {
+    if hovering(&rest_resp, para) {
         ui.painter().line_segment([rest.left_top(), rest.right_top()], egui::Stroke::new(2.0, t.accent));
     }
-    if let Some(p) = rest_resp.dnd_release_payload::<StyleDrag>() {
-        move_to_group(app, para, &p.0, "");
+    if let Some(names) = dropped(&rest_resp, para) {
+        move_to_group(app, para, &names, "");
     }
     bottom_bar(app, ui, para, current.as_deref(), overrides > 0);
 }
 
-/// The styles a row drag carries: the panel's selection when the row is in it.
+/// The styles a row drag carries (the panel's selection when the row is in it), and which panel
+/// they come from: the two panels' styles can share names.
 #[derive(Clone, Debug)]
-struct StyleDrag(Vec<String>);
+struct StyleDrag {
+    para: bool,
+    names: Vec<String>,
+}
+
+/// A drag of this panel's kind of styles is over `resp`: one from the other panel isn't.
+fn hovering(resp: &egui::Response, para: bool) -> bool {
+    resp.dnd_hover_payload::<StyleDrag>().is_some_and(|p| p.para == para)
+}
+
+/// The styles of this panel's kind dropped on `resp`. A drop from the other panel is left alone.
+fn dropped(resp: &egui::Response, para: bool) -> Option<Vec<String>> {
+    if !hovering(resp, para) {
+        return None;
+    }
+    resp.dnd_release_payload::<StyleDrag>().map(|p| p.names.clone())
+}
+
+/// The document's paragraph or character style names, in panel order.
+fn style_names(doc: &designcraft_doc::Document, para: bool) -> Vec<String> {
+    if para { doc.styles.paragraph.iter().map(|s| s.name.clone()).collect() } else { doc.styles.character.iter().map(|s| s.name.clone()).collect() }
+}
 
 /// The panel's selected styles: more than one after Ctrl/Cmd- or Shift-clicks.
 fn picked_id(para: bool) -> egui::Id {
     egui::Id::new(("styles_picked", para))
+}
+
+/// The picked styles that still exist: a move, rename or delete leaves old names behind.
+fn picked(ui: &egui::Ui, para: bool, names: &[String]) -> Vec<String> {
+    let picked: Vec<String> = ui.data(|d| d.get_temp(picked_id(para))).unwrap_or_default();
+    picked.into_iter().filter(|p| names.contains(p)).collect()
 }
 
 fn kind_of(para: bool) -> &'static str {
@@ -90,9 +114,11 @@ fn group_row(app: &mut DesignApp, ui: &mut egui::Ui, para: bool, g: &str, t: &To
     let open_id = egui::Id::new(("style_group_open", para, g));
     let mut open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(true);
     let rename_id = egui::Id::new(("style_group_rename", para));
+    // Set when a rename starts: the field takes the focus once, so a click elsewhere commits it.
+    let focus_id = egui::Id::new(("style_group_rename_focus", para));
     let renaming: Option<(String, String)> = ui.data(|d| d.get_temp(rename_id));
     let (row, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::click());
-    let dropping = resp.dnd_hover_payload::<StyleDrag>().is_some();
+    let dropping = hovering(&resp, para);
     if dropping {
         ui.painter().rect_stroke(row.shrink(1.0), 0.0, egui::Stroke::new(1.5, t.accent), egui::StrokeKind::Inside);
     } else if resp.hovered() {
@@ -106,7 +132,9 @@ fn group_row(app: &mut DesignApp, ui: &mut egui::Ui, para: bool, g: &str, t: &To
         Some((rg, mut text)) if rg == g => {
             let field = egui::Rect::from_min_max(egui::pos2(name_x, row.min.y + 1.0), row.max - vec2(4.0, 1.0));
             let r = ui.put(field, egui::TextEdit::singleline(&mut text).font(egui::FontId::proportional(12.5)));
-            r.request_focus();
+            if ui.data_mut(|d| d.remove_temp::<bool>(focus_id)).is_some() {
+                r.request_focus();
+            }
             let (enter, escape) = ui.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
             if escape {
                 ui.data_mut(|d| d.remove::<(String, String)>(rename_id));
@@ -136,13 +164,16 @@ fn group_row(app: &mut DesignApp, ui: &mut egui::Ui, para: bool, g: &str, t: &To
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::CollapsingHeader, true, g));
     // A triple click counts too: egui reports quick clicks after others as one.
     if resp.double_clicked() || resp.triple_clicked() {
-        ui.data_mut(|d| d.insert_temp(rename_id, (g.to_string(), g.to_string())));
+        ui.data_mut(|d| {
+            d.insert_temp(rename_id, (g.to_string(), g.to_string()));
+            d.insert_temp(focus_id, true);
+        });
     } else if resp.clicked() && resp.interact_pointer_pos().is_none_or(|p| p.x < row.min.x + 40.0) {
         open = !open;
         ui.data_mut(|d| d.insert_temp(open_id, open));
     }
-    if let Some(p) = resp.dnd_release_payload::<StyleDrag>() {
-        move_to_group(app, para, &p.0, g);
+    if let Some(names) = dropped(&resp, para) {
+        move_to_group(app, para, &names, g);
     }
     open
 }
@@ -168,7 +199,8 @@ fn bottom_bar(app: &mut DesignApp, ui: &mut egui::Ui, para: bool, current: Optio
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Delete: the selected style (the text's, or the one picked in the panel).
-            let picked: Vec<String> = ui.data(|d| d.get_temp(picked_id(para))).unwrap_or_default();
+            let names = app.session.active().map(|st| style_names(&st.doc, para)).unwrap_or_default();
+            let picked = picked(ui, para, &names);
             let target = picked.first().cloned().filter(|_| picked.len() == 1).or_else(|| current.map(str::to_string));
             let deletable = target.as_deref().is_some_and(|n| !n.starts_with('['));
             let delete_label = tr(if para { "Delete Paragraph Style…" } else { "Delete Character Style…" });
@@ -234,12 +266,12 @@ fn style_row(
     // Dragged onto a group (or below the styles), the styles move; built-in ones stay.
     if !n.starts_with('[') {
         let names = if picked.len() > 1 && picked.iter().any(|p| p == n) { picked.to_vec() } else { vec![n.to_string()] };
-        resp.dnd_set_drag_payload(StyleDrag(names));
+        resp.dnd_set_drag_payload(StyleDrag { para, names });
     }
     if !n.contains('/')
-        && let Some(p) = resp.dnd_release_payload::<StyleDrag>()
+        && let Some(names) = dropped(&resp, para)
     {
-        move_to_group(app, para, &p.0, "");
+        move_to_group(app, para, &names, "");
     }
     let shown = n.rsplit('/').next().unwrap_or(n);
     let label = if n.contains('/') { shown } else { crate::i18n::style_name(&app.ui.language, shown) };
@@ -348,9 +380,77 @@ fn style_row(
 
 #[cfg(test)]
 mod tests {
-    use egui_kittest::{Harness, kittest::Queryable};
+    use egui_kittest::{
+        Harness,
+        kittest::{NodeT, Queryable},
+    };
 
     use super::*;
+
+    /// Both panels side by side, at 60 frames a second (two clicks make a double-click).
+    fn both_panels(app: DesignApp) -> Harness<'static, DesignApp> {
+        let mut h = Harness::builder().with_size(vec2(640.0, 420.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+            |ui, app: &mut DesignApp| {
+                let id = egui::Id::new("styles_test_fonts");
+                if ui.data(|d| d.get_temp::<bool>(id)).is_none() {
+                    crate::theme::install_fonts(ui.ctx(), "");
+                    ui.data_mut(|d| d.insert_temp(id, true));
+                    return;
+                }
+                ui.horizontal_top(|ui| {
+                    ui.vertical(|ui| {
+                        ui.set_width(300.0);
+                        paragraph(app, ui);
+                    });
+                    ui.vertical(|ui| {
+                        ui.set_width(300.0);
+                        character(app, ui);
+                    });
+                });
+            },
+            app,
+        );
+        h.run_steps(3);
+        h
+    }
+
+    fn drag(h: &mut Harness<'static, DesignApp>, from: egui::Pos2, to: egui::Pos2) {
+        h.hover_at(from);
+        h.drag_at(from);
+        h.run_steps(1);
+        for k in 1..=6 {
+            h.hover_at(from + (to - from) * (k as f32 / 6.0));
+            h.run_steps(1);
+        }
+        h.drop_at(to);
+        h.run_steps(3);
+    }
+
+    /// A paragraph style dragged onto a group of the Character Styles panel changes neither kind
+    /// of style, even when a character style has its name; a character style dragged there moves.
+    #[test]
+    fn a_style_dragged_into_the_other_panel_moves_nothing() {
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({})).unwrap();
+        app.run("style.paragraph.create", json!({"name": "Body", "fromSelection": false})).unwrap();
+        app.run("style.character.create", json!({"name": "Body", "fromSelection": false})).unwrap();
+        app.run("style.group.create", json!({"kind": "character"})).unwrap();
+        let mut h = both_panels(app);
+        let names = |h: &Harness<'static, DesignApp>| {
+            let st = &h.state().session.doc().unwrap().doc.styles;
+            (st.paragraph.iter().map(|s| s.name.clone()).collect::<Vec<_>>(), st.character.iter().map(|s| s.name.clone()).collect::<Vec<_>>())
+        };
+        let before = names(&h);
+        let bodies: Vec<egui::Pos2> = h.get_all_by_label("Body").map(|n| n.rect().center()).collect();
+        assert_eq!(bodies.len(), 2);
+        let (para_body, char_body) = if bodies[0].x < bodies[1].x { (bodies[0], bodies[1]) } else { (bodies[1], bodies[0]) };
+        let group = h.get_by_label("Style Group 1").rect().center();
+        drag(&mut h, para_body, group);
+        assert_eq!(names(&h), before, "a paragraph style dropped on a character group moves nothing");
+        drag(&mut h, char_body, group);
+        let (paragraph, character) = names(&h);
+        assert!(paragraph.contains(&"Body".to_string()) && character.contains(&"Style Group 1/Body".to_string()), "{character:?}");
+    }
 
     /// The course's chapter 21: style groups as InDesign's. The folder button makes "Style
     /// Group 1"; styles dragged onto it move in (Ctrl-click picks two to drag together); a
@@ -412,6 +512,9 @@ mod tests {
         let names: Vec<String> = h.state().session.doc().unwrap().doc.styles.paragraph.iter().map(|s| s.name.clone()).collect();
         assert!(names.contains(&"Style Group 1/Bullets".into()) && names.contains(&"Style Group 1/Recipe Categories".into()), "{names:?}");
         assert!(names.contains(&"Recipe titles".into()), "the style not picked stays");
+        // The picked names are gone, so the text's style shows as the selection again.
+        let row = h.get_all_by_label("[Basic Paragraph]").find_map(|n| n.accesskit_node().toggled());
+        assert_eq!(row, Some(egui::accesskit::Toggled::True), "the text's style is the selection");
         // A double-click renames the group, Enter commits it. (Past egui's triple-click window
         // from the clicks before.)
         h.run_steps(45);
@@ -432,6 +535,26 @@ mod tests {
         h.run_steps(3);
         assert_eq!(h.state().session.doc().unwrap().doc.styles.style_groups(true), ["Basic Styles"]);
         assert!(h.query_by_label("Basic Styles").is_some());
+        // Renamed again, a click on another row commits the name: the field doesn't keep the focus.
+        h.run_steps(45);
+        let at = center(&h, "Basic Styles");
+        h.hover_at(at);
+        for _ in 0..2 {
+            h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE });
+            h.run_steps(1);
+            h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE });
+            h.run_steps(1);
+        }
+        h.run_steps(2);
+        h.event(egui::Event::Key { key: egui::Key::A, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::COMMAND });
+        h.event(egui::Event::Text("Kitchen".into()));
+        h.run_steps(1);
+        let other = center(&h, "Recipe titles");
+        h.hover_at(other);
+        h.event(egui::Event::PointerButton { pos: other, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE });
+        h.event(egui::Event::PointerButton { pos: other, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE });
+        h.run_steps(3);
+        assert_eq!(h.state().session.doc().unwrap().doc.styles.style_groups(true), ["Kitchen"]);
         // ⌥/Alt-click on the new-style button: New Paragraph Style, from the selected text.
         let at = center(&h, "Create New Style from Selection");
         h.hover_at(at);
