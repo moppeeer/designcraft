@@ -1033,29 +1033,36 @@ impl DesignApp {
 
     /// Load an ordered batch, retaining single-file import dialogs where needed. The batch stops
     /// when a file opens a dialog (a multi-page PDF's Import Options, an alert), as the inbox's
-    /// does; every file that loads the cursor adds to what the earlier ones loaded.
+    /// does; every file that loads the cursor adds to what the earlier ones loaded, in the order
+    /// the files were chosen (images in a row load together, before the file after them).
     fn place_paths(&mut self, paths: Vec<String>) {
         let mut images = Vec::new();
         let mut loaded = false;
-        for path in paths {
-            if is_cursor_image(&path) {
-                images.push(json!({"path": path}));
+        // `None` at the end loads the images left.
+        for path in paths.into_iter().map(Some).chain([None]) {
+            if let Some(p) = &path
+                && is_cursor_image(p)
+            {
+                images.push(json!({"path": p}));
                 continue;
             }
+            if path.is_none() && images.is_empty() {
+                break;
+            }
             if self.ui.dialog.is_some() {
                 self.status(crate::i18n::tr(&self.ui.language, "Place cancelled while a dialog is open"));
                 return;
             }
-            if let Ok(r) = self.place_path_with(&path, loaded) {
+            if !images.is_empty()
+                && let Ok(r) = self.run("place.load", json!({"files": std::mem::take(&mut images), "append": loaded}))
+            {
                 loaded |= r.get("loaded").and_then(Value::as_bool) == Some(true);
             }
-        }
-        if !images.is_empty() {
-            if self.ui.dialog.is_some() {
-                self.status(crate::i18n::tr(&self.ui.language, "Place cancelled while a dialog is open"));
-                return;
+            if let Some(p) = path
+                && let Ok(r) = self.place_path_with(&p, loaded)
+            {
+                loaded |= r.get("loaded").and_then(Value::as_bool) == Some(true);
             }
-            let _ = self.run("place.load", json!({"files": images, "append": loaded}));
         }
     }
 
@@ -2997,6 +3004,23 @@ mod browser_import_tests {
         assert_eq!(app.session.loaded_queue.len(), 2);
         app.run("place.load", json!({"files": files})).unwrap();
         assert_eq!(app.session.loaded_queue.len(), 1);
+    }
+
+    /// Images around a single-page PDF load into the cursor in the order they were chosen.
+    #[test]
+    fn native_batch_keeps_the_chosen_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = |n: &str| dir.path().join(n).to_string_lossy().to_string();
+        std::fs::write(path("a.svg"), image()).unwrap();
+        std::fs::write(path("one.pdf"), pdf_pages(1)).unwrap();
+        std::fs::write(path("b.svg"), image()).unwrap();
+        let mut app = app();
+        app.services.read = Some(Box::new(|p| std::fs::read(p).map_err(|e| e.to_string())));
+        app.place_paths(vec![path("a.svg"), path("one.pdf"), path("b.svg")]);
+        let st = app.session.doc().unwrap();
+        let name = |a: designcraft_doc::AssetId| st.doc.assets[&a].name.clone();
+        let order: Vec<String> = app.session.loaded.iter().chain(app.session.loaded_queue.iter()).map(|g| name(g.asset)).collect();
+        assert_eq!(order, ["a.svg", "one.pdf", "b.svg"]);
     }
 
     #[test]
