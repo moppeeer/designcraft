@@ -352,6 +352,9 @@ list) · [roadmap.md](docs/roadmap.md) (milestones, plan) · [parity-checklist.m
 
 Newest first.
 
+- **2026-10-22** · macOS: the app menu has a Language submenu after Settings… with each interface language in its own name and the current one checked, as in the suite's other apps; Preferences › General › Interface Language stays. No readiness percentage change.
+- **2026-10-22** · macOS menu bar: the menus keep working after the interface language or Show CJK Features changes (a rebuilt menu bar lost every click, Quit included), and its key equivalents are the shortcuts in effect, so a shortcut moved in the Keyboard Shortcuts editor leaves its old menu item. No readiness percentage change.
+- **2026-10-22** · Paragraph rules: Rule Above's offset is measured from the first line's baseline to the rule's bottom edge, as in InDesign. Rules sat one ascent too high and crossed the previous paragraph's text (reported from an imported INDD document). No readiness percentage change.
 - **2026-10-21** · The loaded place cursor counts several images as InDesign does: the first image's thumbnail with "(6)" beside its badge, in place of the "6 images · drag + arrows for grid" hint. One image dragged out keeps its proportions and scale readout; a grid (arrow keys while dragging) uses the dragged rectangle. Builds on #1307 and #1392. No readiness percentage change.
 - **2026-10-20** · The loaded place cursor shows a thumbnail of the graphic, as InDesign's does; dragging with it draws the frame at the graphic's proportions from where the drag started, with its scale beside the pointer, and places exactly that frame. No readiness percentage change.
 - **2026-10-16** · Type › Reload Fonts (`font.reload`): fonts installed, edited or removed while DesignCraft runs are read again without a restart, and the open documents recompose with them (#328, #547). An edited font file is noticed by its length and modification time; bundled, added and document fonts stay as they are. InDesign does this by itself, so noticing changes automatically is still open (gap 6). No readiness percentage change.
@@ -644,3 +647,5 @@ Newest first.
 The shared craft-installer UI preserves this revision's install options and provides persistent installation, repair and Windows Settings removal completion screens. Silent modes stay unattended. Earlier Windows acceptance is recorded in packaging/windows/README.md; normal CI and production-profile upgrade qualification against pinned current releases are in progress. No release or PR has been published.
 
 - **2026-10-15** · Windows recovery folders validate the identity of the live locked file without reading it through a second handle. Missing or replaced locks disable writes and cleanup; regression tests cover retained exclusive locking and replacement-file protection. No readiness percentage change.
+
+- PDF reader infrastructure: pinned shared parsing/rasterization, transformed page-box geometry and explicit failures for known incomplete layered-PDF exports. Application ownership and parity targets are unchanged.
