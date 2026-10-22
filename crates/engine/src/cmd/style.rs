@@ -1528,7 +1528,7 @@ fn create_object(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(it) = &src {
         os.fill = Some(it.fill.clone());
         os.stroke = Some(it.stroke.clone());
-        os.corners = Some(it.corners);
+        os.corners = Some(it.corners.path_to_named(&it.path));
         os.text_frame = it.text_frame().map(|t| t.options.clone());
         os.effects = Some(it.effects.clone());
     }
@@ -1705,7 +1705,7 @@ fn edit_object(s: &mut Session, p: &Value) -> Result<Value> {
             effects.as_ref().is_some_and(|(o, _)| it.effects == *o)
                 || fill.as_ref().is_some_and(|(o, _)| it.fill == *o)
                 || stroke.as_ref().is_some_and(|(o, _)| it.stroke == *o)
-                || corners.as_ref().is_some_and(|(o, _)| it.corners == *o)
+                || corners.as_ref().is_some_and(|(o, _)| it.corners == o.named_to_path(&it.path))
         };
         let updated = d.update_items(
             |it| it.object_style == new.name && follows(it),
@@ -1726,9 +1726,9 @@ fn edit_object(s: &mut Session, p: &Value) -> Result<Value> {
                     it.stroke = n.clone();
                 }
                 if let Some((o, n)) = &corners
-                    && it.corners == *o
+                    && it.corners == o.named_to_path(&it.path)
                 {
-                    it.corners = *n;
+                    it.corners = n.named_to_path(&it.path);
                 }
             },
         );
