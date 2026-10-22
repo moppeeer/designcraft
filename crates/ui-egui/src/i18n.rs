@@ -1000,6 +1000,13 @@ const TABLE: &[(&str, [&str; 5])] = &[
         ],
     ),
     ("Load Styles", ["Formate laden", "Charger les styles", "Cargar estilos", "スタイルを読み込み", "加载样式"]),
+    ("Triple", ["Dreifach", "Triple", "Triple", "三重線", "三线"]),
+    ("Dashed (3 and 2)", ["Gestrichelt (3 und 2)", "Tirets (3 et 2)", "Discontinua (3 y 2)", "破線（3 と 2）", "虚线（3 和 2）"]),
+    ("Dashed (4 and 4)", ["Gestrichelt (4 und 4)", "Tirets (4 et 4)", "Discontinua (4 y 4)", "破線（4 と 4）", "虚线（4 和 4）"]),
+    ("Left Slant Hash", ["Schraffur links", "Hachures obliques à gauche", "Rayado inclinado a la izquierda", "左斜線", "左斜线"]),
+    ("Right Slant Hash", ["Schraffur rechts", "Hachures obliques à droite", "Rayado inclinado a la derecha", "右斜線", "右斜线"]),
+    ("White Diamond", ["Weiße Raute", "Losange blanc", "Rombo blanco", "白抜きダイヤ", "空心菱形"]),
+    ("Japanese Dots", ["Japanische Punkte", "Points japonais", "Puntos japoneses", "和文点線", "日式点线"]),
     (
         "Differs from this document",
         ["Weicht von diesem Dokument ab", "Diffère de ce document", "Difiere de este documento", "このドキュメントと異なります", "与此文档不同"],

@@ -740,14 +740,13 @@ impl Renderer {
             .with_miter_limit(st.miter_limit);
         let kind = f.doc.stroke_kind(&st.kind);
         let length = designcraft_doc::path_length_bound(bp);
-        match &kind {
-            StrokeType::Dashed { pattern } if StrokeType::expandable_dashes(pattern, length) => {
-                stroke = stroke.with_dashes(0.0, pattern.iter().copied())
+        if let Some((pattern, dots)) = kind.dashes(st.weight)
+            && StrokeType::expandable_dashes(&pattern, length)
+        {
+            stroke = stroke.with_dashes(0.0, pattern);
+            if dots {
+                stroke = stroke.with_caps(kurbo::Cap::Round);
             }
-            StrokeType::Dotted if StrokeType::expandable_dashes(&[0.0, st.weight * 2.0], length) => {
-                stroke = stroke.with_dashes(0.0, [0.0, st.weight * 2.0]).with_caps(kurbo::Cap::Round)
-            }
-            _ => {}
         }
         ctx.set_transform(f.view * xf);
         if !set_fill_paint(ctx, f.doc, &paint, bounds) {
@@ -795,7 +794,15 @@ impl Renderer {
             }
             return;
         }
+        let dots = kind.dashes(st.weight).is_some_and(|(_, dots)| dots);
         match st.align {
+            // Round dots aligned inside or outside stay whole: along the path moved half the
+            // weight that way, as InDesign draws them.
+            StrokeAlign::Inside | StrokeAlign::Outside if closed && dots => {
+                let d = st.weight / 2.0 * if st.align == StrokeAlign::Outside { 1.0 } else { -1.0 };
+                ctx.set_stroke(stroke);
+                ctx.stroke_path(&designcraft_geom::stroke_style::offset_outward(bp, d, 0.05 * f.px));
+            }
             StrokeAlign::Inside if closed => {
                 // Clip a double-width stroke to the path.
                 ctx.push_clip_layer(bp);

@@ -33,6 +33,14 @@ pub fn offset_path(bp: &BezPath, d: f64, tol: f64) -> BezPath {
     out
 }
 
+/// A closed path moved `d` outwards (negative: inwards), whichever way it runs: the stroke line
+/// of round dots aligned outside or inside the path, which stay whole rather than being clipped.
+pub fn offset_outward(bp: &BezPath, d: f64, tol: f64) -> BezPath {
+    use kurbo::Shape;
+    // Left of travel (y down) is outside for a path with positive signed area.
+    offset_path(bp, if bp.area() > 0.0 { d } else { -d }, tol)
+}
+
 /// Bands (start, width) across a stroke, as fractions of the weight from its left edge.
 pub type Bands = [(f64, f64)];
 
@@ -109,6 +117,44 @@ pub fn hashed(bp: &BezPath, weight: f64, tol: f64) -> BezPath {
     kurbo::stroke(ticks.iter(), &s, &kurbo::StrokeOpts::default(), tol)
 }
 
+/// A slanted hash: ticks across the path at 45°, leaning back (`lean` −1, Left Slant Hash) or
+/// forward (+1, Right Slant Hash), within the weight.
+pub fn slant_hash(bp: &BezPath, weight: f64, lean: f64, tol: f64) -> BezPath {
+    let mut ticks = BezPath::new();
+    let h = weight / 2.0;
+    for (p, t) in samples(bp, (weight * 0.6).max(1.0)) {
+        let normal = Vec2::new(-t.y, t.x) * h;
+        // The tick's top (left of travel) leans back or forward along the path.
+        let along = t * (h * lean);
+        ticks.move_to(p - normal + along);
+        ticks.line_to(p + normal - along);
+    }
+    let s = Stroke::new((weight * 0.14).max(0.25)).with_caps(kurbo::Cap::Butt);
+    kurbo::stroke(ticks.iter(), &s, &kurbo::StrokeOpts::default(), tol)
+}
+
+/// White Diamond: hollow diamonds, as tall as the weight and a third longer, tip to tip.
+pub fn diamonds(bp: &BezPath, weight: f64, tol: f64) -> BezPath {
+    let long = (weight * 1.3).max(1.0);
+    let mut out = BezPath::new();
+    let h = weight / 2.0;
+    for (p, t) in samples(bp, long) {
+        let normal = Vec2::new(-t.y, t.x) * h;
+        let along = t * (long / 2.0);
+        let mut d = BezPath::new();
+        d.move_to(p - along);
+        d.line_to(p - normal);
+        d.line_to(p + along);
+        d.line_to(p + normal);
+        d.close_path();
+        let s = Stroke::new((weight * 0.08).max(0.25)).with_join(kurbo::Join::Miter);
+        for el in kurbo::stroke(d.iter(), &s, &kurbo::StrokeOpts::default(), tol).elements() {
+            out.push(*el);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,5 +186,47 @@ mod tests {
         assert!(w.height() > 4.0 && w.height() < 9.5, "{w:?}");
         let h = hashed(&line(), 8.0, 0.01).bounding_box();
         assert!((h.height() - 8.0).abs() < 0.5 && h.width() > 90.0, "{h:?}");
+    }
+
+    #[test]
+    fn offset_outward_moves_a_closed_path_out_or_in_either_way_it_runs() {
+        use kurbo::ParamCurveNearest;
+        let square = |cw: bool| {
+            let mut pts = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)];
+            if !cw {
+                pts.reverse();
+            }
+            let mut b = BezPath::new();
+            b.move_to(pts[0]);
+            for p in &pts[1..] {
+                b.line_to(*p);
+            }
+            b.close_path();
+            b
+        };
+        // Whether the path passes within 0.5 pt of `p`.
+        let passes = |b: &BezPath, p: (f64, f64)| b.segments().any(|s| s.nearest(Point::new(p.0, p.1), 1e-6).distance_sq < 0.25);
+        for cw in [true, false] {
+            assert!(passes(&offset_outward(&square(cw), 5.0, 0.01), (50.0, -5.0)), "{cw}: outside, above the top edge");
+            assert!(passes(&offset_outward(&square(cw), -5.0, 0.01), (50.0, 5.0)), "{cw}: inside, below the top edge");
+        }
+    }
+
+    #[test]
+    fn slant_hashes_lean_their_ways_and_diamonds_are_hollow() {
+        // Along y = 0 going right, "left of travel" is −y: a left slant's tick runs from up-left
+        // to down-right (\), a right slant's from up-right to down-left (/).
+        let left = slant_hash(&line(), 8.0, -1.0, 0.01);
+        let right = slant_hash(&line(), 8.0, 1.0, 0.01);
+        assert!(left.contains(Point::new(48.0 - 3.0, -3.0)) || left.contains(Point::new(50.4 - 3.0, -3.0)), "\\ top left");
+        let lb = left.bounding_box();
+        assert!((lb.height() - 8.0).abs() < 1.0, "{lb:?}");
+        assert_ne!(format!("{:?}", left.elements().first()), format!("{:?}", right.elements().first()));
+        let d = diamonds(&line(), 10.0, 0.01);
+        let b = d.bounding_box();
+        assert!((b.height() - 10.0).abs() < 1.5 && b.width() > 90.0, "{b:?}");
+        // A diamond's centre is empty; its edge is drawn.
+        assert!(!d.contains(Point::new(13.0, 0.0)), "hollow");
+        assert!(d.contains(Point::new(13.0 + 6.5 / 2.0, -2.5)), "the edge between the side tip and the top");
     }
 }
