@@ -38,7 +38,12 @@ pub fn offset_path(bp: &BezPath, d: f64, tol: f64) -> BezPath {
 pub fn offset_outward(bp: &BezPath, d: f64, tol: f64) -> BezPath {
     use kurbo::Shape;
     // Left of travel (y down) is outside for a path with positive signed area.
-    offset_path(bp, if bp.area() > 0.0 { d } else { -d }, tol)
+    let mut out = offset_path(bp, if bp.area() > 0.0 { d } else { -d }, tol);
+    // Closed, so the dots run on round it with no seam or end caps.
+    if bp.elements().iter().any(|e| matches!(e, kurbo::PathEl::ClosePath)) {
+        out.close_path();
+    }
+    out
 }
 
 /// Bands (start, width) across a stroke, as fractions of the weight from its left edge.
@@ -402,6 +407,8 @@ mod tests {
         // Whether the path passes within 0.5 pt of `p`.
         let passes = |b: &BezPath, p: (f64, f64)| b.segments().any(|s| s.nearest(Point::new(p.0, p.1), 1e-6).distance_sq < 0.25);
         for cw in [true, false] {
+            let closed = |b: &BezPath| matches!(b.elements().last(), Some(kurbo::PathEl::ClosePath));
+            assert!(closed(&offset_outward(&square(cw), 5.0, 0.01)) && closed(&offset_outward(&square(cw), -5.0, 0.01)), "{cw}: closed");
             assert!(passes(&offset_outward(&square(cw), 5.0, 0.01), (50.0, -5.0)), "{cw}: outside, above the top edge");
             assert!(passes(&offset_outward(&square(cw), -5.0, 0.01), (50.0, 5.0)), "{cw}: inside, below the top edge");
         }

@@ -758,8 +758,15 @@ impl Renderer {
         let bp = arrows.as_ref().map_or(bp, |a| &a.0);
         // Gap colour under dashes and dots: the whole path, undashed.
         let gap = if matches!(kind, StrokeType::Solid) { None } else { f.doc.resolve_color(&st.gap_swatch, st.gap_tint) };
+        // Round dots aligned inside or outside run along the path moved half the weight that way
+        // (they stay whole), and so does their gap colour.
+        let dots = kind.dashes(st.weight).is_some_and(|(_, dots)| dots);
+        let moved = (closed && dots && st.align != StrokeAlign::Center).then(|| {
+            let d = st.weight / 2.0 * if st.align == StrokeAlign::Outside { 1.0 } else { -1.0 };
+            designcraft_geom::stroke_style::offset_outward(bp, d, 0.05 * f.px)
+        });
         if let Some(g) = gap
-            && !matches!(st.align, StrokeAlign::Inside | StrokeAlign::Outside if closed)
+            && (moved.is_some() || !matches!(st.align, StrokeAlign::Inside | StrokeAlign::Outside if closed))
         {
             let op = overprints(f, &st.gap_swatch, st.gap_tint, st.gap_overprint);
             if op {
@@ -774,7 +781,7 @@ impl Renderer {
                 end_cap: kurbo::Cap::Butt,
                 ..stroke.clone()
             });
-            ctx.stroke_path(bp);
+            ctx.stroke_path(moved.as_ref().unwrap_or(bp));
             if op {
                 ctx.pop_layer();
             }
@@ -807,14 +814,11 @@ impl Renderer {
             }
             return;
         }
-        let dots = kind.dashes(st.weight).is_some_and(|(_, dots)| dots);
         match st.align {
-            // Round dots aligned inside or outside stay whole: along the path moved half the
-            // weight that way, as InDesign draws them.
-            StrokeAlign::Inside | StrokeAlign::Outside if closed && dots => {
-                let d = st.weight / 2.0 * if st.align == StrokeAlign::Outside { 1.0 } else { -1.0 };
+            // Round dots aligned inside or outside stay whole, as InDesign draws them.
+            _ if moved.is_some() => {
                 ctx.set_stroke(stroke);
-                ctx.stroke_path(&designcraft_geom::stroke_style::offset_outward(bp, d, 0.05 * f.px));
+                ctx.stroke_path(moved.as_ref().unwrap_or(bp));
             }
             StrokeAlign::Inside if closed => {
                 // Clip a double-width stroke to the path.
