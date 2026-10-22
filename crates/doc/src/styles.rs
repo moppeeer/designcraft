@@ -64,7 +64,9 @@ pub struct ObjectStyle {
     /// effects differ from the style's (a local override).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effects: Option<Effects>,
-    /// Corner Options (Stroke & Corner Options): each corner's shape and size, in path order.
+    /// Corner Options (Stroke & Corner Options): each corner's shape and size, by name (top left,
+    /// top right, bottom right, bottom left), as InDesign's; an item takes them at the anchors at
+    /// those corners ([`CornerOptions::named_to_path`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub corners: Option<CornerOptions>,
 }
@@ -73,7 +75,7 @@ impl ObjectStyle {
     /// Gives `it` the fill, stroke, corners, effects and text frame options this style sets.
     pub fn apply_to(&self, it: &mut Item) {
         if let Some(c) = self.corners {
-            it.corners = c;
+            it.corners = c.named_to_path(&it.path);
         }
         if let Some(f) = &self.fill {
             it.fill = f.clone();
