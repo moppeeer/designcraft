@@ -1136,33 +1136,42 @@ impl DesignApp {
         }
         let Some(inbox) = self.services.inbox.clone() else { return };
         let files = std::mem::take(&mut *inbox.lock().unwrap_or_else(|e| e.into_inner()));
-        let (images, others): (Vec<_>, Vec<_>) = files.into_iter().partition(|file| {
+        let cursor_image = |file: &ImportedFile| {
             matches!(file.request.purpose.as_str(), "place" | "drop")
                 && !file.name.to_ascii_lowercase().ends_with(".pdf")
                 && (is_cursor_image(&file.name) || designcraft_render::image_size(&file.bytes).is_some())
-        });
-        let mut groups = std::collections::BTreeMap::<(Option<u64>, String), Vec<ImportedFile>>::new();
-        for file in images {
-            groups.entry((file.request.target, file.request.purpose.clone())).or_default().push(file);
-        }
-        let mut files = others;
-        for ((target, purpose), group) in groups {
-            if group.len() == 1 {
-                files.extend(group);
+        };
+        // In the order they came: consecutive images for the same document load the place
+        // cursor together; after the first placement into it, the later ones are added to it.
+        let mut append = false;
+        let mut files = files.into_iter().peekable();
+        while let Some(file) = files.next() {
+            let placing = matches!(file.request.purpose.as_str(), "place" | "drop");
+            let mut group = vec![];
+            if cursor_image(&file) {
+                while let Some(next) =
+                    files.next_if(|n| cursor_image(n) && n.request.target == file.request.target && n.request.purpose == file.request.purpose)
+                {
+                    group.push(next);
+                }
+            }
+            if !group.is_empty() {
+                if self.ui.dialog.is_some() {
+                    self.status(crate::i18n::tr(&self.ui.language, "Image import cancelled while a dialog is open"));
+                    continue;
+                }
+                if self.activate_import_target(&file.request).is_err() {
+                    continue;
+                }
+                let sources: Vec<_> = std::iter::once(file)
+                    .chain(group)
+                    .map(|f| json!({"name": f.name, "base64": designcraft_engine::cmd::base64_encode(&f.bytes)}))
+                    .collect();
+                if self.run("place.load", json!({"files": sources, "append": append})).is_ok() {
+                    append = true;
+                }
                 continue;
             }
-            if self.ui.dialog.is_some() {
-                self.status(crate::i18n::tr(&self.ui.language, "Image import cancelled while a dialog is open"));
-                continue;
-            }
-            if self.activate_import_target(&ImportRequest { target, purpose }).is_err() {
-                continue;
-            }
-            let sources: Vec<_> =
-                group.into_iter().map(|f| json!({"name": f.name, "base64": designcraft_engine::cmd::base64_encode(&f.bytes)})).collect();
-            let _ = self.run("place.load", json!({"files": sources}));
-        }
-        for file in files {
             if self.ui.dialog.is_some() {
                 self.status(
                     crate::i18n::tr(&self.ui.language, "{name}: import cancelled while a dialog is open; choose the file again")
@@ -1171,13 +1180,16 @@ impl DesignApp {
                 continue;
             }
             let name = file.name.clone();
-            if let Err(e) = self.import_file(file) {
-                self.status(format!("{name}: {e}"));
+            match self.import_file(file, append) {
+                Ok(_) if placing => append = true,
+                Ok(_) => {}
+                Err(e) => self.status(format!("{name}: {e}")),
             }
         }
     }
 
-    fn import_file(&mut self, file: ImportedFile) -> Result<Value, String> {
+    /// Imports `file`; a placed one is added to the place cursor when `append`.
+    fn import_file(&mut self, file: ImportedFile, append: bool) -> Result<Value, String> {
         let lower = file.name.to_ascii_lowercase();
         if let Some(kind) = file.request.purpose.strip_prefix("styles") {
             self.activate_import_target(&file.request)?;
@@ -1209,9 +1221,9 @@ impl DesignApp {
         if lower.ends_with(".ase") || file.request.purpose == "swatches" {
             self.run("swatch.load", json!({"base64": b64}))
         } else if file.request.purpose == "place" {
-            self.place_file(json!({"name": file.name, "base64": b64}))
+            self.place_file(json!({"name": file.name, "base64": b64, "append": append}))
         } else if place {
-            self.open_file("file.place", json!({"name": file.name, "base64": b64}))
+            self.open_file("file.place", json!({"name": file.name, "base64": b64, "append": append}))
         } else {
             let title = file.name.rsplit_once('.').map_or(file.name.as_str(), |(stem, _)| stem);
             self.open_file("file.openBytes", json!({"name": title, "base64": b64}))
@@ -2968,6 +2980,23 @@ mod browser_import_tests {
         let result = dialogs::confirm(&mut app).unwrap();
         assert_eq!(result["images"], 3);
         assert_eq!(result["pages"], 1);
+    }
+
+    /// Files dropped together are placed in the order they came: images around a PDF go into the
+    /// place cursor before and after it, and each adds to the cursor rather than replacing it.
+    #[test]
+    fn inbox_places_images_and_a_pdf_in_their_order_into_one_cursor() {
+        let mut app = app();
+        let request = app.import_request("place");
+        let png = |v: u8| designcraft_render::Rendered { width: 10, height: 10, pixels: vec![v; 400] }.to_png();
+        for (name, bytes) in [("a.png", png(200)), ("one.pdf", pdf_pages(1)), ("b.png", png(90))] {
+            app.services.inbox.as_ref().unwrap().lock().unwrap().push(ImportedFile { request: request.clone(), name: name.into(), bytes });
+        }
+        app.drain_inbox();
+        let doc = &app.session.doc().unwrap().doc;
+        let names: Vec<String> =
+            app.session.loaded.iter().chain(app.session.loaded_queue.iter()).map(|g| doc.assets[&g.asset].name.clone()).collect();
+        assert_eq!(names, ["a.png", "one.pdf", "b.png"], "in the order dropped, all in the cursor");
     }
 
     #[test]

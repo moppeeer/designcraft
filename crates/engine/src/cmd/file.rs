@@ -940,8 +940,11 @@ fn load_cursor(s: &mut Session, mut asset: Asset, size: (f64, f64), append: bool
 
 /// Cancel every pending image if Undo removed an asset used by the cursor.
 fn validate_place_cursor(s: &mut Session, command: &str) -> Result<()> {
-    let valid = s.loaded.is_some()
-        && s.loaded.iter().chain(s.loaded_queue.iter()).all(|image| s.doc().is_ok_and(|d| d.doc.assets.contains_key(&image.asset)));
+    // An empty cursor is its own error, and leaves the tool as it is.
+    if s.loaded.is_none() {
+        return Err(bad(command, "nothing loaded in the place cursor"));
+    }
+    let valid = s.loaded.iter().chain(s.loaded_queue.iter()).all(|image| s.doc().is_ok_and(|d| d.doc.assets.contains_key(&image.asset)));
     if !valid {
         s.loaded = None;
         s.loaded_queue.clear();
@@ -1347,6 +1350,22 @@ mod image_place_tests {
         let png = designcraft_render::Rendered { width: 40, height: 20, pixels: [red, 90, 180, 255].repeat(800) }.to_png();
         std::fs::write(file.path(), png)?;
         Ok(file)
+    }
+
+    /// With nothing in the place cursor, placing says so and leaves the tool as it is (the
+    /// cursor's graphic gone from the document is another error).
+    #[test]
+    fn an_empty_place_cursor_says_so_and_keeps_the_tool() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        s.set_tool("rectangleFrame");
+        for (cmd, p) in
+            [("place.drop", json!({"x": 10, "y": 10})), ("place.grid", json!({"rect": [0, 0, 100, 100]})), ("place.contactSheet", json!({}))]
+        {
+            let e = s.execute(cmd, &p).unwrap_err().to_string();
+            assert!(e.contains("nothing loaded"), "{cmd}: {e}");
+            assert_eq!(s.tool_id(), "rectangleFrame", "{cmd}");
+        }
     }
 
     #[test]
