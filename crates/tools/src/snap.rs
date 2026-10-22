@@ -31,6 +31,7 @@ pub fn snap_point(cx: &ToolContext, sr: SpreadRef, p: Point) -> (Point, Vec<Over
             x_edges: [true, true, true],
             y_edges: [true, true, true],
             exclude: &[],
+            exclude_guides: &[],
             copying: false,
             lengths: [None, None],
             angle: None,
@@ -395,9 +396,10 @@ fn grid_origin(cx: &ToolContext, req: &SnapRequest<'_>, axis: Axis) -> Option<f6
 /// Lines are `page.y0 + start + n * increment` for n >= 0 while the line is inside the page
 /// (the bottom edge is not a line, matching the canvas). An increment of 0 or less skips the
 /// pass. `relative_to` and `view_threshold` are not read, and hiding the baseline grid does not
-/// turn this off. Only a page the rect crosses on x contributes.
+/// turn this off. Only a page the rect crosses on x contributes. A dragged ruler guide
+/// ([`Gesture::Guide`]) doesn't snap to it.
 fn pass_baseline(cx: &ToolContext, req: &SnapRequest<'_>, axis: Axis, tol: f64) -> Option<AxisHit> {
-    if !matches!(axis, Axis::Y) || !cx.snap.snap_to_guides {
+    if !matches!(axis, Axis::Y) || !cx.snap.snap_to_guides || matches!(req.gesture, Gesture::Guide) {
         return None;
     }
     let baseline = &cx.doc.settings.baseline_grid;
@@ -1000,7 +1002,8 @@ fn push_parent_lengths(out: &mut Vec<f64>, cx: &ToolContext, req: &SnapRequest<'
 ///
 /// A page guide attracts when the moving rect overlaps that page on the other axis. A spread
 /// guide uses the spread bounds. Locked guides are included, and so are the guides a page shows
-/// from its parent page. A guide is a target only when `Guide::visible_in` accepts it.
+/// from its parent page. A guide is a target only when `Guide::visible_in` accepts it, and not
+/// when the request excludes it (the guides being dragged).
 fn pass_guides(cx: &ToolContext, req: &SnapRequest<'_>, axis: Axis, tol: f64) -> Option<AxisHit> {
     if !cx.snap.snap_to_guides || !cx.snap.show_guides {
         return None;
@@ -1010,10 +1013,15 @@ fn pass_guides(cx: &ToolContext, req: &SnapRequest<'_>, axis: Axis, tol: f64) ->
     let flags = axis_flags(req, axis);
     let (moving_lo, moving_hi) = perp_ends(req.rect, axis);
     let mut best: Option<Best> = None;
-    for page in &sp.pages {
+    for (pi, page) in sp.pages.iter().enumerate() {
         let page_bounds = page.bounds();
-        // The page's own guides, then those it shows from its parent page.
-        for guide in page.guides.iter().cloned().chain(cx.doc.parent_guides(page)) {
+        // The page's own guides, less the excluded ones, then those it shows from its parent page.
+        let own = page
+            .guides
+            .iter()
+            .enumerate()
+            .filter(|&(gi, _)| !req.exclude_guides.contains(&designcraft_doc::GuideSel { spread: req.spread, page: pi, index: gi }));
+        for guide in own.map(|(_, g)| g.clone()).chain(cx.doc.parent_guides(page)) {
             if !guide.visible_in(cx.doc) || !guide.position.is_finite() || guide.orientation != axis_orientation(axis) {
                 continue;
             }
@@ -1445,6 +1453,7 @@ mod tests {
             x_edges: [false, false, false],
             y_edges: [true, true, true],
             exclude: &[],
+            exclude_guides: &[],
             copying: false,
             lengths: [None, None],
             angle: None,
@@ -1461,6 +1470,7 @@ mod tests {
             x_edges: [true, true, true],
             y_edges: [false, false, false],
             exclude,
+            exclude_guides: &[],
             copying: false,
             lengths: [None, None],
             angle: None,
@@ -1493,6 +1503,7 @@ mod tests {
                     x_edges: [false, false, false],
                     y_edges: [true, true, true],
                     exclude: &[moving],
+                    exclude_guides: &[],
                     copying: false,
                     lengths: [None, None],
                     angle: None,
@@ -1522,6 +1533,7 @@ mod tests {
                 x_edges: [true, true, true],
                 y_edges: [false, false, false],
                 exclude: &[moving],
+                exclude_guides: &[],
                 copying: false,
                 lengths: [None, None],
                 angle: None,
@@ -1531,6 +1543,28 @@ mod tests {
         );
         assert!((hit.delta.x - 3.5).abs() < 1e-6);
         assert!(hit.guides.is_empty());
+    }
+
+    /// A dragged guide is not its own target: excluded, the guide at 104 doesn't pull a line at 102.
+    /// Nor does the baseline grid pull it.
+    #[test]
+    fn excluded_guide_is_not_a_target() {
+        let far = Rect::new(400.0, 400.0, 420.0, 420.0);
+        let (doc, _, _) = doc_with_items(far, far, 104.0);
+        let cache = Cache::new();
+        let layout = CanvasLayout::new(&doc, false);
+        let sel = Selection::default();
+        let cx = ctx_on(&doc, &sel, &cache, &layout);
+        let line = Rect::new(102.0, 100.0, 102.0, 300.0);
+        let dragged = [designcraft_doc::GuideSel { spread: SpreadRef::Doc(0), page: 0, index: 0 }];
+        let hit = snap(&cx, move_req(line, &[]));
+        assert!((hit.delta.x - 2.0).abs() < 1e-6, "{:?}", hit.delta);
+        let hit = snap(&cx, SnapRequest { exclude_guides: &dragged, ..move_req(line, &[]) });
+        assert_eq!(hit.delta.x, 0.0);
+        // A dragged guide passes the baseline grid's lines (36 + 12n), which a moved object meets.
+        let flat = Rect::new(100.0, 86.0, 300.0, 86.0);
+        assert!((snap(&cx, y_req(flat)).delta.y - -2.0).abs() < 1e-6);
+        assert_eq!(snap(&cx, SnapRequest { gesture: Gesture::Guide, ..y_req(flat) }).delta.y, 0.0);
     }
 
     #[test]
@@ -1560,6 +1594,7 @@ mod tests {
                 x_edges: [true, false, false],
                 y_edges: [false, false, false],
                 exclude: &[],
+                exclude_guides: &[],
                 copying: false,
                 lengths: [None, None],
                 angle: None,
@@ -1587,6 +1622,7 @@ mod tests {
                 x_edges: [true, true, true],
                 y_edges: [false, false, false],
                 exclude: &[moving],
+                exclude_guides: &[],
                 copying: false,
                 lengths: [None, None],
                 angle: None,
@@ -1617,6 +1653,7 @@ mod tests {
                 x_edges: [false, false, true],
                 y_edges: [false, false, false],
                 exclude: &[moving],
+                exclude_guides: &[],
                 copying: false,
                 lengths: [None, None],
                 angle: None,
@@ -1648,6 +1685,7 @@ mod tests {
                 x_edges: [true, false, false],
                 y_edges: [false, false, false],
                 exclude: &[id],
+                exclude_guides: &[],
                 copying: true,
                 lengths: [None, None],
                 angle: None,
@@ -1684,6 +1722,7 @@ mod tests {
                 x_edges: [true, false, false],
                 y_edges: [false, false, false],
                 exclude: &[original],
+                exclude_guides: &[],
                 copying: true,
                 lengths: [None, None],
                 angle: None,
@@ -1811,6 +1850,7 @@ mod tests {
                 x_edges: [false, false, true],
                 y_edges: [false, false, false],
                 exclude: &[],
+                exclude_guides: &[],
                 copying: false,
                 lengths: [Some(197.0), None],
                 angle: None,
@@ -1854,6 +1894,7 @@ mod tests {
                 x_edges: [false, false, true],
                 y_edges: [false, false, false],
                 exclude: &[],
+                exclude_guides: &[],
                 copying: false,
                 lengths: [Some(82.0), None],
                 angle: None,
@@ -1889,6 +1930,7 @@ mod tests {
                 x_edges: [true, true, true],
                 y_edges: [false, false, false],
                 exclude: &[moving],
+                exclude_guides: &[],
                 copying: false,
                 lengths: [None, None],
                 angle: None,
@@ -2064,6 +2106,7 @@ mod tests {
                 x_edges: [true, true, true],
                 y_edges: [false, false, false],
                 exclude: &[],
+                exclude_guides: &[],
                 copying: false,
                 lengths: [Some(38.0), None],
                 angle: None,
@@ -2096,6 +2139,7 @@ mod tests {
                 x_edges: [false, false, false],
                 y_edges: [false, false, false],
                 exclude: &[],
+                exclude_guides: &[],
                 copying: false,
                 lengths: [None, None],
                 angle: Some(28.0),
@@ -2140,6 +2184,7 @@ mod tests {
                 x_edges: [false, false, false],
                 y_edges: [false, false, false],
                 exclude: &[],
+                exclude_guides: &[],
                 copying: false,
                 lengths: [None, None],
                 angle: Some(28.0),
@@ -2212,6 +2257,7 @@ mod tests {
                     x_edges: [false, false, false],
                     y_edges: [false, false, false],
                     exclude: &[],
+                    exclude_guides: &[],
                     copying: false,
                     lengths: [None, None],
                     angle: Some(angle),
