@@ -1151,7 +1151,9 @@ impl Exporter<'_> {
         };
         let kind = self.doc.stroke_kind(&st.kind);
         // A hidden stroke style: its parts, each in its colour or the stroke's (gap colour under them).
-        if let Some(parts) = kind.painted(bp, st.weight, 0.05) {
+        let hidden_arrows = matches!(kind, StrokeType::Hidden { .. }).then(|| designcraft_doc::arrow::apply(bp, st, closed)).flatten();
+        let hidden_bp = hidden_arrows.as_ref().map_or(bp, |a| &a.0);
+        if let Some(parts) = kind.painted(hidden_bp, st.weight, 0.05) {
             s.set_stroke(None);
             if let Some(g) = self.swatch_color(&st.gap_swatch, st.gap_tint)
                 && st.gap_swatch != designcraft_color::swatch::NONE
@@ -1171,6 +1173,7 @@ impl Exporter<'_> {
                 s.draw_path(&p);
             }
             s.set_fill(None);
+            draw_arrowheads(s, hidden_arrows.iter().flat_map(|a| &a.1), &paint);
             return;
         }
         // Stripes, wavy and hash strokes: a filled outline (gap colour under it).
@@ -1267,21 +1270,7 @@ impl Exporter<'_> {
         for _ in 0..pushes {
             s.pop();
         }
-        for h in arrows.iter().flat_map(|a| &a.1) {
-            let Some(p) = to_path(&h.path) else { continue };
-            match h.outline {
-                Some(w) => {
-                    s.set_stroke(Some(Stroke { paint: paint.clone(), width: w as f32, opacity: NormalizedF32::ONE, ..Default::default() }));
-                    s.draw_path(&p);
-                    s.set_stroke(None);
-                }
-                None => {
-                    s.set_fill(Some(krilla::paint::Fill { paint: paint.clone(), opacity: NormalizedF32::ONE, rule: FillRule::NonZero }));
-                    s.draw_path(&p);
-                    s.set_fill(None);
-                }
-            }
-        }
+        draw_arrowheads(s, arrows.iter().flat_map(|a| &a.1), &paint);
     }
 
     /// A placed PDF as krilla embeds it. krilla refuses a PDF newer than the file it writes (the
@@ -2158,5 +2147,24 @@ mod eps_tests {
         assert_eq!(civil(-10_000_000_000_000), (-314918, 8, 13, 6, 13, 20));
         assert_eq!(civil(i64::MAX), (292277026596, 12, 4, 15, 30, 7));
         assert_eq!(civil(i64::MIN), (-292277022657, 1, 27, 8, 29, 52));
+    }
+}
+
+/// A stroke's arrowheads in its paint: outlined ones stroked, solid ones filled.
+fn draw_arrowheads<'a>(s: &mut Surface, heads: impl Iterator<Item = &'a designcraft_doc::arrow::ArrowShape>, paint: &krilla::paint::Paint) {
+    for h in heads {
+        let Some(p) = to_path(&h.path) else { continue };
+        match h.outline {
+            Some(w) => {
+                s.set_stroke(Some(Stroke { paint: paint.clone(), width: w as f32, opacity: NormalizedF32::ONE, ..Default::default() }));
+                s.draw_path(&p);
+                s.set_stroke(None);
+            }
+            None => {
+                s.set_fill(Some(krilla::paint::Fill { paint: paint.clone(), opacity: NormalizedF32::ONE, rule: FillRule::NonZero }));
+                s.draw_path(&p);
+                s.set_fill(None);
+            }
+        }
     }
 }

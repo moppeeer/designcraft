@@ -791,12 +791,24 @@ impl Renderer {
         if let Some(parts) = kind.painted(bp, st.weight, 0.05 * f.px) {
             for (part, colour) in &parts {
                 match colour {
-                    Some([r, g, b]) => ctx.set_paint(peniko::Color::from_rgba8(*r, *g, *b, 255)),
+                    // As ink coverage under Separations Preview, like every other colour.
+                    Some(rgb) => ctx.set_paint(screen_color(*rgb, 255)),
                     None => {
                         set_fill_paint(ctx, f.doc, &paint, bounds);
                     }
                 }
                 ctx.fill_path(part);
+            }
+            // The arrowheads, in the stroke's paint: the path was shortened under them.
+            set_fill_paint(ctx, f.doc, &paint, bounds);
+            for h in arrows.iter().flat_map(|a| &a.1) {
+                match h.outline {
+                    Some(w) => {
+                        ctx.set_stroke(kurbo::Stroke::new(w).with_join(kurbo::Join::Miter));
+                        ctx.stroke_path(&h.path);
+                    }
+                    None => ctx.fill_path(&h.path),
+                }
             }
             return;
         }
