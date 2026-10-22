@@ -314,7 +314,7 @@ pub fn stroke_type_out(t: &StrokeType) -> String {
     let s = match t {
         // Named custom styles are written as StripedStrokeStyle / DashedStrokeStyle elements.
         StrokeType::Style { name } => return format!("CustomStrokeStyle/{name}"),
-        StrokeType::Stripes { .. } => "StrokeStyle/$ID/Solid",
+        StrokeType::Stripes { .. } | StrokeType::Hidden { .. } => "StrokeStyle/$ID/Solid",
         StrokeType::Solid => "StrokeStyle/$ID/Solid",
         StrokeType::Dashed { .. } => "StrokeStyle/$ID/Dashed",
         StrokeType::Dotted => "StrokeStyle/$ID/Canned Dotted",

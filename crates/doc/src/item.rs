@@ -161,6 +161,11 @@ pub enum StrokeType {
     WhiteDiamond,
     /// Dots closer together than Dotted's.
     JapaneseDots,
+    /// One of InDesign's hidden stroke styles: what a document stroke style of that name resolves
+    /// to ([`HiddenStroke::of`]); never stored.
+    Hidden {
+        style: HiddenStroke,
+    },
     /// A custom striped stroke: bands (start, width) as fractions of the weight from the left edge.
     Stripes {
         bands: Vec<(f64, f64)>,
@@ -192,6 +197,7 @@ impl StrokeType {
             StrokeType::RightSlantHash => "Right Slant Hash",
             StrokeType::WhiteDiamond => "White Diamond",
             StrokeType::JapaneseDots => "Japanese Dots",
+            StrokeType::Hidden { .. } => "Custom",
             StrokeType::Stripes { .. } => "Stripes",
             StrokeType::Style { .. } => "Custom",
         }
@@ -273,10 +279,33 @@ impl StrokeType {
         })
     }
 
-    /// The filled area for types drawn as fills (stripes, wavy, hash); `None` for solid, dashed
-    /// and dotted strokes (and unresolved named styles).
+    /// The parts of a hidden stroke style and their colours (`None`: the stroke's colour); `None`
+    /// for every other type.
+    pub fn painted(&self, bp: &designcraft_geom::BezPath, weight: f64, tol: f64) -> Option<Vec<designcraft_geom::stroke_style::Part>> {
+        use designcraft_geom::stroke_style as ss;
+        let StrokeType::Hidden { style } = self else { return None };
+        Some(match style {
+            HiddenStroke::Rainbow => ss::colour_bands(bp, weight, &ss::RAINBOW, tol),
+            HiddenStroke::Rasta => ss::colour_bands(bp, weight, &ss::RASTA, tol),
+            HiddenStroke::Feet => ss::feet(bp, weight),
+            HiddenStroke::Woof => ss::woof(bp, weight),
+            HiddenStroke::Happy => ss::happy(bp, weight, tol),
+            HiddenStroke::Lights => ss::lights(bp, weight, tol),
+            HiddenStroke::Bounce => ss::bounce(bp, weight),
+        })
+    }
+
+    /// The filled area for types drawn as fills (stripes, wavy, hash, and a hidden style's parts
+    /// together); `None` for solid, dashed and dotted strokes (and unresolved named styles).
     pub fn outline(&self, bp: &designcraft_geom::BezPath, weight: f64, tol: f64) -> Option<designcraft_geom::BezPath> {
         use designcraft_geom::stroke_style as ss;
+        if let Some(parts) = self.painted(bp, weight, tol) {
+            let mut all = designcraft_geom::BezPath::new();
+            for el in parts.iter().flat_map(|(p, _)| p.elements()) {
+                all.push(*el);
+            }
+            return Some(all);
+        }
         match self {
             StrokeType::Wavy => Some(ss::wavy(bp, weight, tol)),
             StrokeType::Hashed => Some(ss::hashed(bp, weight, tol)),
@@ -285,6 +314,37 @@ impl StrokeType {
             StrokeType::WhiteDiamond => Some(ss::diamonds(bp, weight, tol)),
             t => t.bands().map(|b| ss::stripes(bp, weight, &b, tol)),
         }
+    }
+}
+
+/// InDesign's hidden stroke styles: a document stroke style named exactly one of these (a Dash
+/// style, or a Stripe style for Rainbow and Rasta) draws a set pattern instead of its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HiddenStroke {
+    Feet,
+    Happy,
+    Lights,
+    Woof,
+    Bounce,
+    Rainbow,
+    Rasta,
+}
+
+impl HiddenStroke {
+    /// The hidden style a stroke style named `name` of `kind` is, if any. The name is matched as
+    /// InDesign matches it, capitals included.
+    pub fn of(name: &str, kind: &StrokeType) -> Option<HiddenStroke> {
+        Some(match (name, kind) {
+            ("Feet", StrokeType::Dashed { .. }) => HiddenStroke::Feet,
+            ("Happy", StrokeType::Dashed { .. }) => HiddenStroke::Happy,
+            ("Lights", StrokeType::Dashed { .. }) => HiddenStroke::Lights,
+            ("Woof", StrokeType::Dashed { .. }) => HiddenStroke::Woof,
+            ("Bounce", StrokeType::Dashed { .. }) => HiddenStroke::Bounce,
+            ("Rainbow", StrokeType::Stripes { .. }) => HiddenStroke::Rainbow,
+            ("Rasta", StrokeType::Stripes { .. }) => HiddenStroke::Rasta,
+            _ => return None,
+        })
     }
 }
 
@@ -1703,6 +1763,49 @@ impl Item {
 mod tests {
     use super::*;
     use designcraft_geom::shapes;
+
+    /// InDesign's hidden stroke styles: a document style named exactly Feet, Happy, Lights, Woof
+    /// or Bounce (Dash), or Rainbow or Rasta (Stripe), resolves to its pattern; another name, other
+    /// capitals or another type stay the style's own.
+    #[test]
+    fn hidden_stroke_styles_resolve_by_name_and_type() {
+        let dash = StrokeType::Dashed { pattern: vec![12.0, 4.0] };
+        let stripe = StrokeType::Stripes { bands: vec![(0.0, 0.5)] };
+        let mut d = crate::Document::new(&crate::build::NewDocument::default());
+        for (name, kind) in [("Feet", &dash), ("Rainbow", &stripe), ("feet", &dash), ("Rainbow", &dash), ("Lights", &stripe), ("Rasta", &stripe)] {
+            d.stroke_styles.retain(|x| x.name != name);
+            d.stroke_styles.push(StrokeStyleDef { name: name.into(), kind: kind.clone() });
+        }
+        let resolve = |d: &crate::Document, name: &str| d.stroke_kind(&StrokeType::Style { name: name.into() });
+        assert_eq!(resolve(&d, "Feet"), StrokeType::Hidden { style: HiddenStroke::Feet });
+        assert_eq!(resolve(&d, "Rasta"), StrokeType::Hidden { style: HiddenStroke::Rasta });
+        assert_eq!(resolve(&d, "feet"), dash, "capitals matter");
+        assert_eq!(resolve(&d, "Lights"), stripe, "Lights is a Dash style");
+        assert_eq!(HiddenStroke::of("Rainbow", &dash), None, "Rainbow is a Stripe style");
+        assert_eq!(HiddenStroke::of("Rainbow", &stripe), Some(HiddenStroke::Rainbow));
+        // Each draws, with colours where InDesign fixes them.
+        let line = designcraft_geom::BezPath::from_vec(vec![
+            designcraft_geom::PathEl::MoveTo((0.0, 0.0).into()),
+            designcraft_geom::PathEl::LineTo((200.0, 0.0).into()),
+        ]);
+        for style in [
+            HiddenStroke::Feet,
+            HiddenStroke::Happy,
+            HiddenStroke::Lights,
+            HiddenStroke::Woof,
+            HiddenStroke::Bounce,
+            HiddenStroke::Rainbow,
+            HiddenStroke::Rasta,
+        ] {
+            let parts = StrokeType::Hidden { style }.painted(&line, 20.0, 0.05).unwrap();
+            assert!(parts.iter().all(|(p, _)| !p.elements().is_empty()), "{style:?}");
+            let colours = parts.iter().filter(|(_, c)| c.is_some()).count();
+            let fixed = matches!(style, HiddenStroke::Happy | HiddenStroke::Lights | HiddenStroke::Rainbow | HiddenStroke::Rasta);
+            assert_eq!(colours > 0, fixed, "{style:?}: fixed colours");
+        }
+        assert_eq!(StrokeType::Hidden { style: HiddenStroke::Rainbow }.painted(&line, 20.0, 0.05).map(|p| p.len()), Some(7));
+        assert_eq!(StrokeType::Hidden { style: HiddenStroke::Rasta }.painted(&line, 20.0, 0.05).map(|p| p.len()), Some(3));
+    }
 
     /// The Type menu's built-in types: each once, each a type of its own with a label, and the
     /// dashed and dotted ones with their patterns.

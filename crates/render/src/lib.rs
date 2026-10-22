@@ -780,6 +780,19 @@ impl Renderer {
             }
             set_fill_paint(ctx, f.doc, &paint, bounds);
         }
+        // A hidden stroke style: its parts, each in its colour or the stroke's.
+        if let Some(parts) = kind.painted(bp, st.weight, 0.05 * f.px) {
+            for (part, colour) in &parts {
+                match colour {
+                    Some([r, g, b]) => ctx.set_paint(peniko::Color::from_rgba8(*r, *g, *b, 255)),
+                    None => {
+                        set_fill_paint(ctx, f.doc, &paint, bounds);
+                    }
+                }
+                ctx.fill_path(part);
+            }
+            return;
+        }
         // Stripes, wavy and hash strokes are fills (along the path's centre line).
         if let Some(o) = kind.outline(bp, st.weight, 0.05 * f.px) {
             ctx.fill_path(&o);

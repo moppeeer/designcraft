@@ -1150,6 +1150,29 @@ impl Exporter<'_> {
             designcraft_doc::Cap::Projecting => krilla::paint::LineCap::Square,
         };
         let kind = self.doc.stroke_kind(&st.kind);
+        // A hidden stroke style: its parts, each in its colour or the stroke's (gap colour under them).
+        if let Some(parts) = kind.painted(bp, st.weight, 0.05) {
+            s.set_stroke(None);
+            if let Some(g) = self.swatch_color(&st.gap_swatch, st.gap_tint)
+                && st.gap_swatch != designcraft_color::swatch::NONE
+            {
+                s.set_stroke(Some(Stroke { paint: g.into(), width: st.weight as f32, opacity: NormalizedF32::ONE, ..Default::default() }));
+                s.set_fill(None);
+                s.draw_path(path);
+                s.set_stroke(None);
+            }
+            for (part, colour) in &parts {
+                let Some(p) = to_path(part) else { continue };
+                let paint: krilla::paint::Paint = match colour {
+                    Some([r, g, b]) => device(&Color::Rgb { r: *r as f32 / 255.0, g: *g as f32 / 255.0, b: *b as f32 / 255.0 }, self.rgb_only).into(),
+                    None => paint.clone(),
+                };
+                s.set_fill(Some(Fill { paint, opacity: NormalizedF32::ONE, rule: FillRule::NonZero }));
+                s.draw_path(&p);
+            }
+            s.set_fill(None);
+            return;
+        }
         // Stripes, wavy and hash strokes: a filled outline (gap colour under it).
         if let Some(o) = kind.outline(bp, st.weight, 0.05)
             && let Some(op) = to_path(&o)
