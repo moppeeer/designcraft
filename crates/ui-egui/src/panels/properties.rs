@@ -2729,10 +2729,16 @@ fn paint_link_status(p: &egui::Painter, r: Rect, status: &str, t: &Tokens) {
 
 /// A linked graphic's thumbnail for the Links panel, cached per image data. Data that doesn't
 /// decode is cached too (as none), so its row doesn't decode it again every frame.
+///
+/// The key is the data's address; the entry holds a weak reference to that data, which keeps
+/// the address from being reused while the entry lives, and an entry whose data is gone (the
+/// link relinked or updated, the document closed) is stale.
 fn link_thumb(ctx: &egui::Context, doc: &designcraft_doc::Document, aid: u64) -> Option<egui::TextureHandle> {
     let a = doc.assets.get(&designcraft_doc::AssetId(aid))?;
     let key = link_thumb_key(a);
-    if let Some(t) = ctx.data(|d| d.get_temp::<Option<egui::TextureHandle>>(key)) {
+    if let Some((data, t)) = ctx.data(|d| d.get_temp::<LinkThumb>(key))
+        && data.upgrade().is_some_and(|data| std::sync::Arc::ptr_eq(&data, &a.data))
+    {
         return t;
     }
     let w = a.pixels.map_or(256.0, |(w, _)| f64::from(w).max(1.0));
@@ -2741,9 +2747,13 @@ fn link_thumb(ctx: &egui::Context, doc: &designcraft_doc::Document, aid: u64) ->
         let max = ctx.input(|i| i.max_texture_side).min(1024);
         ctx.load_texture("link_thumb", crate::widgets::fit_texture(ci, max), egui::TextureOptions::LINEAR)
     });
-    ctx.data_mut(|d| d.insert_temp(key, t.clone()));
+    ctx.data_mut(|d| d.insert_temp::<LinkThumb>(key, (std::sync::Arc::downgrade(&a.data), t.clone())));
     t
 }
+
+/// A cached Links panel thumbnail: the image data it was made from, and the texture (none when
+/// the data didn't decode).
+type LinkThumb = (std::sync::Weak<Vec<u8>>, Option<egui::TextureHandle>);
 
 /// The cache key of an asset's Links panel thumbnail: its data and page.
 fn link_thumb_key(a: &designcraft_doc::Asset) -> egui::Id {
@@ -3231,8 +3241,44 @@ mod tests {
             let ctx = ui.ctx();
             assert!(super::link_thumb(ctx, &doc, aid.0).is_none());
             let key = super::link_thumb_key(&doc.assets[&aid]);
-            assert!(ctx.data(|d| d.get_temp::<Option<egui::TextureHandle>>(key)).is_some_and(|t| t.is_none()), "cached as none");
+            assert!(ctx.data(|d| d.get_temp::<super::LinkThumb>(key)).is_some_and(|(_, t)| t.is_none()), "cached as none");
             assert!(super::link_thumb(ctx, &doc, aid.0).is_none());
+        });
+        out.textures_delta.clear();
+    }
+
+    /// A thumbnail cache entry belongs to the image data it was made from. An entry left at the
+    /// same key by data that is gone (its address reused) is stale: the link's own data is
+    /// decoded rather than the old result shown.
+    #[test]
+    fn a_link_thumbnail_entry_of_data_that_is_gone_is_stale() {
+        use designcraft_doc::{Asset, AssetId};
+        use std::sync::Arc;
+        let mut s = designcraft_engine::Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let mut doc = (*s.doc().unwrap().doc).clone();
+        let aid = AssetId(doc.alloc());
+        let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="#4488cc"/></svg>"##;
+        let a = Asset {
+            id: aid,
+            name: "photo.svg".into(),
+            mime: "image/svg+xml".into(),
+            data: Arc::new(svg.to_vec()),
+            pixels: Some((32, 32)),
+            ..Default::default()
+        };
+        doc.assets.insert(aid, Arc::new(a));
+        let key = super::link_thumb_key(&doc.assets[&aid]);
+        // What an undecodable file left at this key before its data was freed: no thumbnail, and
+        // a reference to data that is gone.
+        let gone = Arc::downgrade(&Arc::new(b"not a png".to_vec()));
+        let ctx = egui::Context::default();
+        ctx.data_mut(|d| d.insert_temp::<super::LinkThumb>(key, (gone, None)));
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let ctx = ui.ctx();
+            assert!(super::link_thumb(ctx, &doc, aid.0).is_some(), "the link's own image, not the stale none");
+            let (data, t) = ctx.data(|d| d.get_temp::<super::LinkThumb>(key)).expect("the new entry");
+            assert!(t.is_some() && data.upgrade().is_some_and(|d| Arc::ptr_eq(&d, &doc.assets[&aid].data)), "made from this data");
         });
         out.textures_delta.clear();
     }
