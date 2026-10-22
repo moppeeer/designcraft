@@ -35,15 +35,60 @@ pub fn offset_path(bp: &BezPath, d: f64, tol: f64) -> BezPath {
 
 /// A closed path moved `d` outwards (negative: inwards), whichever way it runs: the stroke line
 /// of round dots aligned outside or inside the path, which stay whole rather than being clipped.
+/// Each contour moves on its own, away from the shape's filled area (a hole's contour into the
+/// hole), and stays a separate closed contour.
 pub fn offset_outward(bp: &BezPath, d: f64, tol: f64) -> BezPath {
     use kurbo::Shape;
-    // Left of travel (y down) is outside for a path with positive signed area.
-    let mut out = offset_path(bp, if bp.area() > 0.0 { d } else { -d }, tol);
-    // Closed, so the dots run on round it with no seam or end caps.
-    if bp.elements().iter().any(|e| matches!(e, kurbo::PathEl::ClosePath)) {
-        out.close_path();
+    let mut out = BezPath::new();
+    for contour in contours(bp) {
+        // Outside is the side away from the filled area: test a point just left of the
+        // contour's travel, halfway along its first segment.
+        let Some(seg) = contour.segments().find(|s| s.arclen(1e-3) > 1e-9) else { continue };
+        let t = seg.deriv_at(0.5);
+        let n = t.hypot();
+        let left = if n > 1e-12 { Vec2::new(t.y, -t.x) / n } else { continue };
+        let r = contour.bounding_box();
+        let eps = (r.width().min(r.height()) * 1e-3).clamp(1e-6, 0.01);
+        let left_inside = bp.winding(seg.eval(0.5) + left * eps) != 0;
+        let mut moved = offset_path(&contour, if left_inside { -d } else { d }, tol);
+        // Closed, so the dots run round it with no seam or end caps.
+        if contour.elements().iter().any(|e| matches!(e, kurbo::PathEl::ClosePath)) {
+            moved.close_path();
+        }
+        for el in moved.elements() {
+            out.push(*el);
+        }
     }
     out
+}
+
+/// The contours (sub-paths) of `bp`, each starting at its MoveTo.
+fn contours(bp: &BezPath) -> Vec<BezPath> {
+    let mut out: Vec<BezPath> = Vec::new();
+    for el in bp.elements() {
+        if matches!(el, kurbo::PathEl::MoveTo(_)) || out.is_empty() {
+            out.push(BezPath::new());
+        }
+        if let Some(c) = out.last_mut() {
+            c.push(*el);
+        }
+    }
+    out
+}
+
+/// The derivative of a segment at `t`.
+trait DerivAt {
+    fn deriv_at(&self, t: f64) -> Vec2;
+}
+
+impl DerivAt for PathSeg {
+    fn deriv_at(&self, t: f64) -> Vec2 {
+        match self {
+            PathSeg::Line(l) => l.p1 - l.p0,
+            PathSeg::Quad(q) => q.deriv().eval(t).to_vec2(),
+            PathSeg::Cubic(c) => c.deriv().eval(t).to_vec2(),
+        }
+    }
 }
 
 /// Bands (start, width) across a stroke, as fractions of the weight from its left edge.
@@ -406,6 +451,27 @@ mod tests {
         };
         // Whether the path passes within 0.5 pt of `p`.
         let passes = |b: &BezPath, p: (f64, f64)| b.segments().any(|s| s.nearest(Point::new(p.0, p.1), 1e-6).distance_sq < 0.25);
+        // A square with a square hole (the hole running the other way, or the same way): each
+        // contour moves away from the filled ring, the hole's into the hole, and they stay apart.
+        for hole_cw in [false, true] {
+            let mut ring = square(true);
+            let mut hole = [(30.0, 30.0), (70.0, 30.0), (70.0, 70.0), (30.0, 70.0)];
+            if !hole_cw {
+                hole.reverse();
+            }
+            ring.move_to(hole[0]);
+            for p in &hole[1..] {
+                ring.line_to(*p);
+            }
+            ring.close_path();
+            let out = offset_outward(&ring, 5.0, 0.01);
+            let moves = out.elements().iter().filter(|e| matches!(e, kurbo::PathEl::MoveTo(_))).count();
+            assert_eq!(moves, 2, "{hole_cw}: two contours, not joined");
+            assert!(passes(&out, (50.0, -5.0)), "{hole_cw}: the outer contour outside");
+            assert!(passes(&out, (50.0, 35.0)), "{hole_cw}: the hole's contour into the hole");
+            let inside = offset_outward(&ring, -5.0, 0.01);
+            assert!(passes(&inside, (50.0, 5.0)) && passes(&inside, (50.0, 25.0)), "{hole_cw}: both into the ring");
+        }
         for cw in [true, false] {
             let closed = |b: &BezPath| matches!(b.elements().last(), Some(kurbo::PathEl::ClosePath));
             assert!(closed(&offset_outward(&square(cw), 5.0, 0.01)) && closed(&offset_outward(&square(cw), -5.0, 0.01)), "{cw}: closed");
