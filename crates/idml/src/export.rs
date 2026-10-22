@@ -3020,28 +3020,7 @@ fn path_geometry(path: &PathData) -> El {
 
 /// IDML corner names for anchors 0..4 of a path (by position on its bounding box).
 pub(crate) fn corner_names(path: &PathData) -> [&'static str; 4] {
-    let default = ["TopLeft", "TopRight", "BottomRight", "BottomLeft"];
-    let Some(sp) = path.subpaths.first() else { return default };
-    if sp.anchors.len() != 4 {
-        return default;
-    }
-    let Some(b) = path.bounds() else { return default };
-    let c = b.center();
-    let mut out = default;
-    let mut seen = HashSet::new();
-    for (i, a) in sp.anchors.iter().enumerate() {
-        let n = match (a.p.y < c.y, a.p.x < c.x) {
-            (true, true) => "TopLeft",
-            (true, false) => "TopRight",
-            (false, false) => "BottomRight",
-            (false, true) => "BottomLeft",
-        };
-        if !seen.insert(n) {
-            return default;
-        }
-        out[i] = n;
-    }
-    out
+    designcraft_geom::corners::named_slots(path).map(|k| ["TopLeft", "TopRight", "BottomRight", "BottomLeft"][k])
 }
 
 fn format_name(mime: &str) -> &'static str {
