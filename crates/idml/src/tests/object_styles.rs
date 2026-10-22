@@ -276,3 +276,16 @@ fn a_style_setting_one_corner_inherits_the_others_and_names_them() {
     style.apply_to(&mut it);
     assert_eq!(it.corners.corners.map(|c| c.shape), [CornerShape::Rounded, CornerShape::Rounded, CornerShape::Rounded, CornerShape::Bevel]);
 }
+
+/// An object style giving its corners only with the legacy all-corners `CornerOption` and
+/// `CornerRadius` keeps them, so applying it to another frame rounds it.
+#[test]
+fn a_style_with_legacy_all_corner_attributes_keeps_its_corners() {
+    let legacy = r#"<ObjectStyle Self="ObjectStyle/Legacy" Name="Legacy" CornerOption="RoundedCorner" CornerRadius="9">
+      <Properties><BasedOn type="string">$ID/[None]</BasedOn></Properties>
+    </ObjectStyle>"#;
+    let d = fixture(legacy, &[]);
+    let style = d.styles.object.iter().find(|s| s.name == "Legacy").unwrap();
+    let c = style.corners.expect("the legacy corners").corners;
+    assert!(c.iter().all(|c| c.shape == CornerShape::Rounded && c.size == 9.0), "{c:?}");
+}
