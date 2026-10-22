@@ -3497,7 +3497,12 @@ pub fn confirm(app: &mut DesignApp) -> Result<Value, String> {
                 json!({"path": d.s("path"), "paragraph": checked("paragraph"), "character": checked("character"), "conflicts": d.s("conflicts")}),
             )
         }
-        "loadParents" => app.load_parents(json!({"path": d.s("path"), "conflicts": d.s("conflicts")})),
+        "loadParents" => {
+            // Into the document the dialog was opened for, made active again; refused if it has closed.
+            let target = d.fields.get("target").and_then(Value::as_u64);
+            app.activate_import_target(&crate::ImportRequest { purpose: "parents".into(), target })?;
+            app.load_parents(json!({"path": d.s("path"), "conflicts": d.s("conflicts")}))
+        }
         "importOptions" => app.open_file(
             "file.place",
             json!({"path": d.s("path"), "removeStyles": d.b("removeStyles"), "styleConflicts": d.s("styleConflicts"), "styleMap": d.fields.get("map").cloned().unwrap_or(json!({}))}),

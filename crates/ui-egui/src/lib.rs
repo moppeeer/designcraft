@@ -1031,9 +1031,11 @@ impl DesignApp {
             if same.is_empty() && found["sizesDiffer"] != true {
                 return self.load_parents(json!({"path": path}));
             }
+            // The conflicts were found in this document: OK loads into it, whichever is active then.
+            let target = self.session.active().map(|d| d.uid);
             self.ui.dialog = Some(dialogs::Dialog::new(
                 "loadParents",
-                json!({"path": path, "conflicts": "rename", "same": same, "sizesDiffer": found["sizesDiffer"]}),
+                json!({"path": path, "conflicts": "rename", "same": same, "sizesDiffer": found["sizesDiffer"], "target": target}),
             ));
             return Ok(Value::Null);
         }
@@ -2897,6 +2899,30 @@ mod load_parents_tests {
         assert_eq!(d.parents[0].items.len(), 1, "the file's A-Parent, with its frame");
         assert_eq!(d.page(0).unwrap().parent, Some(d.parents[0].id), "the pages show it");
         assert_eq!(app.ui.status, "Parent pages loaded: A-Parent, B-Section");
+    }
+
+    /// The dialog's choice goes to the document it was opened for: made active again if another
+    /// one is, and refused, loading nothing, when it has closed.
+    #[test]
+    fn load_parent_pages_loads_into_the_document_it_asked_about() {
+        let (mut app, path) = app_and_template("target");
+        app.pick_parents().unwrap();
+        let asked = app.session.doc().unwrap().uid;
+        let dialog = app.ui.dialog.clone().expect("the Load Parent Pages dialog");
+        app.run("file.new", json!({})).unwrap();
+        assert_ne!(app.session.doc().unwrap().uid, asked, "another document is active");
+        app.ui.dialog = Some(dialog.clone());
+        dialogs::confirm(&mut app).unwrap();
+        assert_eq!(app.session.doc().unwrap().uid, asked, "loaded into the one it asked about");
+        assert_eq!(labels(&app).len(), 3, "its A-Parent and the file's two");
+        // That document closed: nothing loads, into the other one either.
+        app.run("file.close", json!({})).unwrap();
+        assert!(app.session.documents().iter().all(|d| d.uid != asked));
+        let before = labels(&app);
+        app.ui.dialog = Some(dialog);
+        assert!(dialogs::confirm(&mut app).is_err());
+        assert_eq!(labels(&app), before, "the other document is untouched");
+        std::fs::remove_file(&path).unwrap();
     }
 
     /// No conflict and the same page size: the parents load at once. The picker cancelled, or no
