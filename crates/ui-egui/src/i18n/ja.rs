@@ -30,6 +30,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "カット"),
     ("Copy", "コピー"),
     ("Paste", "ペースト"),
+    ("Select three or more objects, or use spacing.", "3 つ以上のオブジェクトを選択するか、間隔を使用してください。"),
     ("Distribute Objects:", "オブジェクトの分布:"),
     ("Distribute Spacing:", "等間隔に分布:"),
     ("Use Spacing", "間隔を指定"),

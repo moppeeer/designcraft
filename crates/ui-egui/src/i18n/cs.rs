@@ -31,6 +31,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "Vyjmout"),
     ("Copy", "Kopírovat"),
     ("Paste", "Vložit"),
+    ("Select three or more objects, or use spacing.", "Vyberte tři nebo více objektů, nebo použijte mezery."),
     ("Distribute Objects:", "Rozmístit objekty:"),
     ("Distribute Spacing:", "Rozmístit mezery:"),
     ("Use Spacing", "Použít mezeru"),

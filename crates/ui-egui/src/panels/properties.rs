@@ -147,7 +147,7 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
     section(ui, crate::i18n::tr(&app.ui.language, "Align"), true);
     align_row(app, ui);
     if i.count > 1 {
-        distribute_rows(app, ui);
+        distribute_rows(app, ui, i.count);
     }
     divider(ui);
     section(ui, crate::i18n::tr(&app.ui.language, "Flex Layout"), true);
@@ -1030,7 +1030,7 @@ fn align_row(app: &mut DesignApp, ui: &mut Ui) {
 /// Properties › Align with several objects selected, as InDesign's: Distribute Objects (by an
 /// edge or the centres) and Distribute Spacing (equal gaps), each with Use Spacing and its
 /// amount in the document's units.
-fn distribute_rows(app: &mut DesignApp, ui: &mut Ui) {
+fn distribute_rows(app: &mut DesignApp, ui: &mut Ui, count: usize) {
     let lang = app.ui.language.clone();
     let unit = units(app);
     let mut run = None;
@@ -1058,10 +1058,14 @@ fn distribute_rows(app: &mut DesignApp, ui: &mut Ui) {
         let (mut on, mut amount): (bool, f64) = ui.data(|d| d.get_temp(id)).unwrap_or((false, 0.0));
         ui.add_space(6.0);
         widgets::caption(ui, crate::i18n::tr(&lang, title));
+        // Two objects are distributed only by a spacing, as in InDesign: without Use Spacing the
+        // buttons need three or more.
+        let enabled = on || count >= 3;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             for (icon, what, tip) in buttons {
-                if icon_toggle(ui, icon, false, crate::i18n::tr(&lang, tip)).clicked() {
+                let b = ui.add_enabled_ui(enabled, |ui| icon_toggle(ui, icon, false, crate::i18n::tr(&lang, tip))).inner;
+                if b.on_disabled_hover_text(crate::i18n::tr(&lang, "Select three or more objects, or use spacing.")).clicked() {
                     let mut p = if key == "props_distribute_objects" { json!({"edge": what}) } else { json!({"axis": what, "by": "spacing"}) };
                     if on {
                         p["spacing"] = json!(amount);
@@ -3537,6 +3541,30 @@ mod tests {
         h.get_by_label("Distribute vertical space").click();
         h.run_steps(3);
         assert_eq!(top(h.state(), ids[1]) - top(h.state(), ids[0]), 20.0, "Use Spacing with 0: the frames touch");
+    }
+
+    /// Two objects: the Distribute buttons need Use Spacing (the command spreads three or more
+    /// otherwise), so they are off until it is ticked, and then spread the two by it.
+    #[test]
+    fn two_objects_are_distributed_only_by_a_spacing() {
+        use egui_kittest::kittest::NodeT;
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({})).unwrap();
+        let ids: Vec<u64> = [72.0, 300.0]
+            .iter()
+            .map(|y| app.run("frame.create", json!({"rect": [72.0, *y, 132.0, y + 20.0]})).unwrap()["id"].as_u64().unwrap())
+            .collect();
+        app.run("selection.set", json!({ "ids": ids })).unwrap();
+        let top = |app: &DesignApp, id: u64| app.session.active().unwrap().doc.item(designcraft_doc::ids::ItemId(id)).unwrap().bounds().y0;
+        let mut h = panel(app);
+        let off = |h: &Harness<'_, DesignApp>, l: &str| h.get_by_label(l).accesskit_node().is_disabled();
+        assert!(off(&h, "Distribute top edges") && off(&h, "Distribute vertical space"), "two objects need a spacing");
+        h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("props_distribute_spacing"), (true, 10.0f64)));
+        h.run_steps(2);
+        assert!(!off(&h, "Distribute vertical space") && off(&h, "Distribute top edges"), "Use Spacing turns its own row on");
+        h.get_by_label("Distribute vertical space").click();
+        h.run_steps(3);
+        assert_eq!(top(h.state(), ids[1]) - top(h.state(), ids[0]), 30.0, "a 10 pt gap between the two");
     }
 
     #[test]

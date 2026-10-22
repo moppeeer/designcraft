@@ -31,6 +31,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "Recortar"),
     ("Copy", "Copiar"),
     ("Paste", "Colar"),
+    ("Select three or more objects, or use spacing.", "Selecione três ou mais objetos ou use o espaçamento."),
     ("Distribute Objects:", "Distribuir objetos:"),
     ("Distribute Spacing:", "Distribuir espaçamento:"),
     ("Use Spacing", "Usar espaçamento"),

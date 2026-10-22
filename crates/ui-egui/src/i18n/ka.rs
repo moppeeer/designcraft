@@ -31,6 +31,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "ამოჭრა"),
     ("Copy", "კოპირება"),
     ("Paste", "ჩასმა"),
+    ("Select three or more objects, or use spacing.", "აირჩიეთ სამი ან მეტი ობიექტი, ან გამოიყენეთ დაშორება."),
     ("Distribute Objects:", "ობიექტების განაწილება:"),
     ("Distribute Spacing:", "ინტერვალის განაწილება:"),
     ("Use Spacing", "ინტერვალის გამოყენება"),

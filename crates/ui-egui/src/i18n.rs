@@ -1039,6 +1039,16 @@ const TABLE: &[(&str, [&str; 5])] = &[
     ),
     ("Load Styles", ["Formate laden", "Charger les styles", "Cargar estilos", "スタイルを読み込み", "加载样式"]),
     (
+        "Select three or more objects, or use spacing.",
+        [
+            "Wählen Sie mindestens drei Objekte aus oder verwenden Sie einen Abstand.",
+            "Sélectionnez au moins trois objets ou utilisez l'espacement.",
+            "Seleccione tres o más objetos o use el espaciado.",
+            "3 つ以上のオブジェクトを選択するか、間隔を使用してください。",
+            "请选择三个或更多对象，或使用间距。",
+        ],
+    ),
+    (
         "Differs from this document",
         ["Weicht von diesem Dokument ab", "Diffère de ce document", "Difiere de este documento", "このドキュメントと異なります", "与此文档不同"],
     ),

@@ -29,6 +29,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Cut", "Вирізати"),
     ("Copy", "Копіювати"),
     ("Paste", "Вставити"),
+    ("Select three or more objects, or use spacing.", "Виділіть три або більше об’єктів або використайте інтервал."),
     ("Distribute Objects:", "Розподілити об’єкти:"),
     ("Distribute Spacing:", "Розподілити інтервали:"),
     ("Use Spacing", "Використовувати інтервал"),
