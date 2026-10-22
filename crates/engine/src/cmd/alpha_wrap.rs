@@ -97,7 +97,7 @@ pub(crate) fn trace(data: &Arc<Vec<u8>>, asset: AssetId, threshold: u8) -> Optio
 fn occupancy(rgba: &[u8], w: u32, h: u32, cols: u32, rows: u32, threshold: u8) -> (Vec<bool>, bool) {
     let mut mask = vec![false; (cols as usize) * (rows as usize)];
     let mut transparent = false;
-    for (i, px) in rgba.chunks_exact(4).enumerate() {
+    for (i, px) in rgba.as_chunks::<4>().0.iter().enumerate() {
         let alpha = px[3];
         transparent |= alpha < 255;
         if alpha > threshold {
