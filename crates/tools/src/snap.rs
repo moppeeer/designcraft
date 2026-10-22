@@ -2063,6 +2063,7 @@ mod tests {
             x_edges: [false, false, false],
             y_edges,
             exclude: &[],
+            exclude_guides: &[],
             copying: false,
             lengths: [None, None],
             angle: None,
