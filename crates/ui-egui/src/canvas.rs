@@ -1232,31 +1232,63 @@ enum LinkBadge {
     Missing,
 }
 
+type LinkStatuses = std::sync::Arc<std::collections::HashMap<u64, String>>;
+
+/// The link badges' check: the last result, the document state it was made for, and a check
+/// running off the UI thread.
+#[derive(Clone, Default)]
+struct LinkCheck {
+    /// Document uid and revision of `map`, and when it was made.
+    key: (u64, u64),
+    at: f64,
+    map: LinkStatuses,
+    /// A check running, for that document state: it fills the slot when done.
+    pending: Option<((u64, u64), std::sync::Arc<std::sync::Mutex<Option<std::collections::HashMap<u64, String>>>>)>,
+}
+
 /// The Links panel's status of each linked asset ("ok", "modified", "missing"), for the link
-/// badges. Checking reads the linked files, so it runs again when the document changes and at
-/// most once a second otherwise.
-fn link_statuses(app: &mut DesignApp, ctx: &egui::Context, doc: &Document) -> std::sync::Arc<std::collections::HashMap<u64, String>> {
-    type Cached = (u64, u64, f64, std::sync::Arc<std::collections::HashMap<u64, String>>);
+/// badges. Checking reads the linked files, so it runs on a background thread when the document
+/// changes and at most once a second otherwise; the badges show the last result meanwhile (none
+/// for another document).
+fn link_statuses(app: &mut DesignApp, ctx: &egui::Context, doc: &Document) -> LinkStatuses {
     if !doc.assets.values().any(|a| a.link.is_some()) {
         return Default::default();
     }
     let Some(st) = app.session.active() else { return Default::default() };
-    let (uid, revision) = (st.uid, st.revision);
+    let key = (st.uid, st.revision);
     let now = ctx.input(|i| i.time);
     // An idle canvas still draws again when the check is due, so a file changed on disk shows.
     ctx.request_repaint_after(std::time::Duration::from_secs(1));
     let id = egui::Id::new(("link_badge_status", app.pane));
-    if let Some((u, r, at, map)) = ctx.data(|d| d.get_temp::<Cached>(id))
-        && (u, r) == (uid, revision)
-        && now - at < 1.0
+    let mut check = ctx.data(|d| d.get_temp::<LinkCheck>(id)).unwrap_or_default();
+    if let Some((for_key, slot)) = check.pending.clone()
+        && let Some(map) = slot.lock().unwrap_or_else(|e| e.into_inner()).take()
     {
-        return map;
+        (check.key, check.at, check.map, check.pending) = (for_key, now, std::sync::Arc::new(map), None);
     }
-    let rows = app.session.execute("links.list", &json!({})).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
-    let map: std::collections::HashMap<u64, String> =
-        rows.iter().filter_map(|r| Some((r.get("asset")?.as_u64()?, r.get("status")?.as_str()?.to_string()))).collect();
-    let map = std::sync::Arc::new(map);
-    ctx.data_mut(|d| d.insert_temp(id, (uid, revision, now, map.clone())));
+    let due = check.key != key || now - check.at >= 1.0;
+    if due && check.pending.is_none() {
+        let assets: Vec<(u64, std::sync::Arc<designcraft_doc::Asset>)> =
+            doc.assets.iter().filter(|(_, a)| a.link.is_some()).map(|(id, a)| (id.0, a.clone())).collect();
+        let document = st.path.clone();
+        let slot = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let run = {
+            let (slot, ctx) = (slot.clone(), ctx.clone());
+            move || {
+                let path = document.as_deref().map(std::path::Path::new);
+                let map = assets.iter().map(|(id, a)| (*id, designcraft_engine::cmd::link_status(a, path).to_string())).collect();
+                *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(map);
+                ctx.request_repaint();
+            }
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        std::thread::spawn(run);
+        #[cfg(target_arch = "wasm32")]
+        run();
+        check.pending = Some((key, slot));
+    }
+    let map = if check.key.0 == key.0 { check.map.clone() } else { Default::default() };
+    ctx.data_mut(|d| d.insert_temp(id, check));
     map
 }
 
@@ -3778,10 +3810,19 @@ mod tests {
         app.run("file.place", json!({"base64": designcraft_engine::cmd::base64_encode(&png), "name": "e.png", "frame": embedded})).unwrap();
         let ctx = egui::Context::default();
         let xf = Xf::new(Rect::from_min_size(Pos2::ZERO, vec2(1440.0, 900.0)), &View::default());
+        // The check runs off the UI thread: ask until the result for this document state is in.
         let badges = |app: &mut DesignApp| {
             let doc = app.session.active().unwrap().doc.clone();
-            let status = link_statuses(app, &ctx, &doc);
-            link_badges(&doc, &CanvasLayout::new(&doc, false), &xf, &status)
+            let key = (app.session.active().unwrap().uid, app.session.active().unwrap().revision);
+            for _ in 0..1000 {
+                let status = link_statuses(app, &ctx, &doc);
+                let check = ctx.data(|d| d.get_temp::<LinkCheck>(egui::Id::new(("link_badge_status", app.pane)))).unwrap();
+                if check.key == key && check.pending.is_none() {
+                    return link_badges(&doc, &CanvasLayout::new(&doc, false), &xf, &status);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            panic!("the link check didn't finish");
         };
         let b = badges(&mut app);
         assert_eq!(b.len(), 1, "only the linked picture: {b:?}");
