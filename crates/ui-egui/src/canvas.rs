@@ -3091,6 +3091,7 @@ fn guide_spot(app: &DesignApp, xf: &Xf, g: &GuideDrag) -> Option<GuideSpot> {
         snap: app.ui.snap_view(),
         unit: app.ui.units,
         stroke_in_front: false,
+        loaded: None,
     };
     let s = designcraft_tools::snap::snap(
         &cx,
