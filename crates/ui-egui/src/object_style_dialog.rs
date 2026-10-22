@@ -29,7 +29,8 @@ pub fn open_new(app: &mut DesignApp) {
         "basedOn": designcraft_doc::NO_OBJECT_STYLE,
         "fill": it.as_ref().map(|i| i.fill.clone()).unwrap_or_default(),
         "stroke": it.as_ref().map(|i| i.stroke.clone()).unwrap_or_default(),
-        "corners": it.as_ref().map(|i| i.corners).unwrap_or_default(),
+        // A style holds named corners (top left, top right, …), the item its path's.
+        "corners": it.as_ref().map(|i| i.corners.path_to_named(&i.path)).unwrap_or_default(),
         "fx": crate::effects_dialog::effects_json(&it.map(|i| i.effects).unwrap_or_default()),
         "hadEffects": from,
         "inc": {"fill": from, "stroke": from, "corners": from},
