@@ -44,10 +44,17 @@ pub(crate) fn sync(doc: &mut Document) {
             continue;
         }
         let Some(a) = doc.assets.get(&asset).filter(|a| a.is_raster()) else { continue };
-        if let Some(o) = trace(&a.data, asset, threshold) {
-            doc.alpha_outlines.push(Arc::new(o));
-        }
+        // An image with no outline (opaque, unreadable, too large) is remembered as an empty
+        // one, so later edits don't decode it again; the contour is then the frame's.
+        let o = trace(&a.data, asset, threshold).unwrap_or_else(|| no_outline(&a.data, asset, threshold));
+        doc.alpha_outlines.push(Arc::new(o));
     }
+}
+
+/// The empty outline standing for an image `trace` found none in: zero-size, which composition
+/// takes as no outline, and dropped like a traced one when the asset's data changes.
+fn no_outline(data: &Arc<Vec<u8>>, asset: AssetId, threshold: u8) -> AlphaOutline {
+    AlphaOutline { asset, threshold, width: 0, height: 0, outer: Default::default(), holes: Default::default(), source: Arc::downgrade(data) }
 }
 
 /// The outline of the pixels of `data` more opaque than `threshold`. None for an image that
@@ -233,6 +240,26 @@ mod tests {
         // Wrap off: the outline goes.
         s.execute("object.textWrap", &json!({"ids": [id], "mode": "none"})).unwrap();
         assert!(s.doc().unwrap().doc.alpha_outlines.is_empty());
+    }
+
+    /// An image with no outline (here opaque) is remembered as an empty one: later edits don't
+    /// trace it again, and the contour is the frame's.
+    #[test]
+    fn an_image_with_no_outline_is_not_traced_on_every_edit() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let data = png(|_, _| true);
+        let id = s
+            .execute("file.place", &json!({"base64": crate::cmd::file::base64_encode(&data), "name": "solid.png", "x": 100, "y": 100, "width": 128}))
+            .unwrap()["id"]
+            .clone();
+        s.execute("object.textWrap", &json!({"ids": [id], "mode": "contour", "contour": "alphaChannel"})).unwrap();
+        let first = s.doc().unwrap().doc.alpha_outlines.clone();
+        assert_eq!(first.len(), 1, "remembered");
+        assert_eq!((first[0].width, first[0].height), (0, 0), "as no outline");
+        s.execute("frame.create", &json!({"rect": [300, 300, 350, 350]})).unwrap();
+        let after = &s.doc().unwrap().doc.alpha_outlines;
+        assert!(Arc::ptr_eq(&first[0], &after[0]), "kept, not traced again");
     }
 
     /// Outlines are traced for a wrap set on the placed graphic and for frames inside groups, and
