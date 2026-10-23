@@ -1188,7 +1188,7 @@ impl Exporter<'_> {
         let path = trimmed.as_ref().unwrap_or(path);
         // Round dots aligned inside or outside stay whole: along the path moved half the weight
         // that way, at the stroke's own width and unclipped, as on screen.
-        let dots = kind.dashes(st.weight).is_some_and(|(_, dots)| dots);
+        let dots = kind.draws_dots(st.weight, length);
         let moved = (closed && dots && st.align != StrokeAlign::Center)
             .then(|| {
                 let d = st.weight / 2.0 * if st.align == StrokeAlign::Outside { 1.0 } else { -1.0 };
