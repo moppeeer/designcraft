@@ -765,8 +765,12 @@ impl Renderer {
             let d = st.weight / 2.0 * if st.align == StrokeAlign::Outside { 1.0 } else { -1.0 };
             designcraft_geom::stroke_style::offset_outward(bp, d, 0.05 * f.px)
         });
+        // Hidden styles are painted on the centre line whatever the alignment, over the whole gap
+        // colour (as in the PDF).
         if let Some(g) = gap
-            && (moved.is_some() || !matches!(st.align, StrokeAlign::Inside | StrokeAlign::Outside if closed))
+            && (matches!(kind, StrokeType::Hidden { .. })
+                || moved.is_some()
+                || !matches!(st.align, StrokeAlign::Inside | StrokeAlign::Outside if closed))
         {
             let op = overprints(f, &st.gap_swatch, st.gap_tint, st.gap_overprint);
             if op {
@@ -1791,6 +1795,36 @@ mod tests {
         let (dash, gap) = (img.pixel(106, 500), img.pixel(114, 500));
         assert!(dash[0] < 80 && dash[2] < 80, "dash {dash:?}");
         assert!(gap[0] < 80 && gap[2] > 150, "gap {gap:?}");
+    }
+
+    /// A hidden style on a closed frame aligned inside still has its gap colour under it.
+    #[test]
+    fn hidden_stroke_keeps_its_gap_colour_when_aligned() {
+        let mut d = Document::new(&NewDocument::default());
+        let lid = d.default_layer();
+        let id = designcraft_doc::ItemId(d.alloc());
+        let mut frame =
+            Item::new(id, lid, designcraft_doc::Shape::Rectangle, designcraft_geom::shapes::rectangle(Rect::new(100.0, 100.0, 300.0, 300.0)));
+        frame.stroke = designcraft_doc::Stroke {
+            swatch: designcraft_color::swatch::BLACK.into(),
+            weight: 12.0,
+            align: StrokeAlign::Inside,
+            kind: StrokeType::Hidden { style: designcraft_doc::HiddenStroke::Feet },
+            gap_swatch: "C=100 M=0 Y=0 K=0".into(),
+            ..Default::default()
+        };
+        d.insert_item(SpreadRef::Doc(0), frame, None).unwrap();
+        let cache = Cache::new();
+        let mut r = Renderer::new();
+        r.threads = 0;
+        let img = r.render_page(&d, &cache, 0, 1.0, false, &RenderOptions::default()).unwrap();
+        let cyan = (100..300).filter(|x| {
+            (94..106).any(|y| {
+                let p = img.pixel(*x, y);
+                p[0] < 80 && p[2] > 150
+            })
+        });
+        assert!(cyan.count() > 20, "the gap colour shows between the feet");
     }
 
     #[test]
