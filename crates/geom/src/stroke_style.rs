@@ -42,14 +42,17 @@ pub fn offset_outward(bp: &BezPath, d: f64, tol: f64) -> BezPath {
     let mut out = BezPath::new();
     for contour in contours(bp) {
         // Outside is the side away from the filled area: test a point just left of the
-        // contour's travel, halfway along its first segment.
-        let Some(seg) = contour.segments().find(|s| s.arclen(1e-3) > 1e-9) else { continue };
-        let t = seg.deriv_at(0.5);
-        let n = t.hypot();
-        let left = if n > 1e-12 { Vec2::new(t.y, -t.x) / n } else { continue };
+        // contour's travel, at the first place along it where it has a direction (a cubic can
+        // stand still at one point, so other points and segments are tried).
+        let Some((at, dir)) =
+            contour.segments().flat_map(|seg| [0.5, 0.25, 0.75, 0.1, 0.9].map(|t| (seg.eval(t), seg.deriv_at(t)))).find(|(_, d)| d.hypot() > 1e-9)
+        else {
+            continue;
+        };
+        let left = Vec2::new(dir.y, -dir.x) / dir.hypot();
         let r = contour.bounding_box();
         let eps = (r.width().min(r.height()) * 1e-3).clamp(1e-6, 0.01);
-        let left_inside = bp.winding(seg.eval(0.5) + left * eps) != 0;
+        let left_inside = bp.winding(at + left * eps) != 0;
         let mut moved = offset_path(&contour, if left_inside { -d } else { d }, tol);
         // Closed, so the dots run round it with no seam or end caps.
         if contour.elements().iter().any(|e| matches!(e, kurbo::PathEl::ClosePath)) {
@@ -451,6 +454,15 @@ mod tests {
         };
         // Whether the path passes within 0.5 pt of `p`.
         let passes = |b: &BezPath, p: (f64, f64)| b.segments().any(|s| s.nearest(Point::new(p.0, p.1), 1e-6).distance_sq < 0.25);
+        // A closed shape whose first cubic stands still halfway (zero derivative at t = 0.5)
+        // keeps its dots: another point gives the direction.
+        let mut lens = BezPath::new();
+        lens.move_to((0.0, 0.0));
+        lens.curve_to((100.0, 0.0), (0.0, 0.0), (100.0, 0.0));
+        lens.curve_to((100.0, 60.0), (0.0, 60.0), (0.0, 0.0));
+        lens.close_path();
+        assert!(!offset_outward(&lens, 2.0, 0.01).elements().is_empty(), "the contour is kept");
+
         // A square with a square hole (the hole running the other way, or the same way): each
         // contour moves away from the filled ring, the hole's into the hole, and they stay apart.
         for hole_cw in [false, true] {
