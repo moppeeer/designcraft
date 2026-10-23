@@ -264,6 +264,12 @@ impl StrokeType {
             && length / period <= MAX_DASH_PERIODS
     }
 
+    /// Whether this type draws round dots along a path at most `length` points long: a dotted
+    /// type whose pattern expands there (otherwise it draws solid, see [`Self::expandable_dashes`]).
+    pub fn draws_dots(&self, weight: f64, length: f64) -> bool {
+        self.dashes(weight).is_some_and(|(pattern, dots)| dots && Self::expandable_dashes(&pattern, length))
+    }
+
     /// The bands of a striped type (start, width as fractions of the weight).
     pub fn bands(&self) -> Option<Vec<(f64, f64)>> {
         Some(match self {
@@ -1805,6 +1811,15 @@ mod tests {
         }
         assert_eq!(StrokeType::Hidden { style: HiddenStroke::Rainbow }.painted(&line, 20.0, 0.05).map(|p| p.len()), Some(7));
         assert_eq!(StrokeType::Hidden { style: HiddenStroke::Rasta }.painted(&line, 20.0, 0.05).map(|p| p.len()), Some(3));
+    }
+
+    /// Dots are dots only where their pattern expands: on a path too long for it the stroke is solid.
+    #[test]
+    fn dots_draw_only_where_their_pattern_expands() {
+        assert!(StrokeType::Dotted.draws_dots(1.0, 500.0));
+        assert!(!StrokeType::Dotted.draws_dots(1.0, 1e9), "solid fallback");
+        assert!(!StrokeType::Dashed3x2.draws_dots(1.0, 500.0), "dashes aren't dots");
+        assert!(!StrokeType::Solid.draws_dots(1.0, 500.0));
     }
 
     /// The Type menu's built-in types: each once, each a type of its own with a label, and the

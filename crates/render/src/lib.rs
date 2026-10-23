@@ -760,7 +760,7 @@ impl Renderer {
         let gap = if matches!(kind, StrokeType::Solid) { None } else { f.doc.resolve_color(&st.gap_swatch, st.gap_tint) };
         // Round dots aligned inside or outside run along the path moved half the weight that way
         // (they stay whole), and so does their gap colour.
-        let dots = kind.dashes(st.weight).is_some_and(|(_, dots)| dots);
+        let dots = kind.draws_dots(st.weight, length);
         let moved = (closed && dots && st.align != StrokeAlign::Center).then(|| {
             let d = st.weight / 2.0 * if st.align == StrokeAlign::Outside { 1.0 } else { -1.0 };
             designcraft_geom::stroke_style::offset_outward(bp, d, 0.05 * f.px)
