@@ -3417,6 +3417,8 @@ const NOT_SEARCHED: &[&str] = &[
     "window.panel.activate",
     "window.panel.close",
     "window.panel.closeGroup",
+    "window.panel.dockGroup",
+    "window.panel.floatGroup",
     // A window edge, an app page, a recent file, a swatch or color group.
     "window.resize",
     "help.app",

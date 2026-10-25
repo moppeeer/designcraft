@@ -436,9 +436,7 @@ fn group_drop_layout<'a>(app: &'a DesignApp, source: &String, pointer: egui::Pos
 
 fn group_icon_target(app: &DesignApp, ctx: &egui::Context, source: &String, pointer: egui::Pos2, blocked: &[egui::Rect]) -> Option<egui::Rect> {
     group_drop_layout(app, source, pointer, blocked)?;
-    egui::containers::panel::PanelState::load(ctx, egui::Id::unique("shared-panel-icons"))
-        .map(|state| state.outer_rect)
-        .filter(|rect| rect.is_finite() && rect.contains(pointer))
+    icon_rail_rect(ctx).filter(|rect| rect.is_finite() && rect.contains(pointer))
 }
 
 fn group_proposal(
