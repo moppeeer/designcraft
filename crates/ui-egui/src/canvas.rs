@@ -3837,7 +3837,9 @@ mod tests {
         let lines: Vec<_> = frame_x(&diamond).to_vec();
         assert!(lines.iter().all(|(a, b)| (a.x - b.x).abs() > 1e-6 && (a.y - b.y).abs() > 1e-6), "diagonals, not a plus: {lines:?}");
         // Still after one of its points moves (which makes it a path).
-        let p = app.run("frame.create", json!({"rect": [300, 200, 400, 260], "shape": "polygon", "sides": 4, "starInset": 0})).unwrap()["id"].as_u64().unwrap();
+        let p = app.run("frame.create", json!({"rect": [300, 200, 400, 260], "shape": "polygon", "sides": 4, "starInset": 0})).unwrap()["id"]
+            .as_u64()
+            .unwrap();
         app.run("path.moveAnchors", json!({"id": p, "anchors": [[0, 0]], "dx": 5, "dy": 0})).unwrap();
         let it = app.session.active().unwrap().doc.item(designcraft_doc::ItemId(p)).unwrap().clone();
         assert_eq!(it.shape, designcraft_doc::Shape::Path);
