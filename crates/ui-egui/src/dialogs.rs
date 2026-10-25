@@ -3356,7 +3356,12 @@ pub fn confirm(app: &mut DesignApp) -> Result<Value, String> {
             app.run("object.color", json!({"color": color, "target": d.s("target"), "text": d.b("text")}))
         }
         "layerOptions" => {
-            let hidden: Vec<Value> = d.fields.get("layers").and_then(Value::as_array).map(|a| a.iter().filter(|l| l["visible"] == false).map(|l| l["name"].clone()).collect()).unwrap_or_default();
+            let hidden: Vec<Value> = d
+                .fields
+                .get("layers")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter(|l| l["visible"] == false).map(|l| l["name"].clone()).collect())
+                .unwrap_or_default();
             // A dialog opened without the menu's fields has no `useDefaults` at all: confirming it
             // with no layer unticked resets file defaults, as it did before all-on existed, rather
             // than making every layer explicitly visible. Only an explicit `false` means all-on.
