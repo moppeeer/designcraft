@@ -576,7 +576,7 @@ fn seed_text_frame_options(app: &DesignApp, d: &mut Dialog) {
     }
     let o = selected_frame_options(app).unwrap_or_default();
     let units = app.session.active().map(|s| s.doc.settings.horizontal_units).unwrap_or(Unit::Picas);
-    let shown = text_frame_fields(&o, units, selected_frame_width(app));
+    let shown = text_frame_fields(&o, units, selected_frame_width(app), &document_grid(app));
     if let Value::Object(m) = &shown {
         for (k, v) in m {
             d.fields.entry(k.clone()).or_insert_with(|| v.clone());
@@ -586,9 +586,15 @@ fn seed_text_frame_options(app: &DesignApp, d: &mut Dialog) {
     d.fields.insert("_shown".into(), shown);
 }
 
+/// The active document's baseline grid (the default one without a document).
+pub(crate) fn document_grid(app: &DesignApp) -> designcraft_doc::BaselineGrid {
+    app.session.active().map(|s| s.doc.settings.baseline_grid.clone()).unwrap_or_default()
+}
+
 /// Text frame options `o` as the Text Frame Options dialog's fields, measures in `units`; with the
-/// frame's width, a Fixed Number column shows the width it gets.
-pub(crate) fn text_frame_fields(o: &designcraft_doc::TextFrameOptions, units: Unit, frame_width: Option<f64>) -> Value {
+/// frame's width, a Fixed Number column shows the width it gets. Without a custom baseline grid of
+/// its own, the frame shows `doc_grid`'s start and increment.
+pub(crate) fn text_frame_fields(o: &designcraft_doc::TextFrameOptions, units: Unit, frame_width: Option<f64>, doc_grid: &designcraft_doc::BaselineGrid) -> Value {
     let fm = |v: f64| json!(format_measure(v, units));
     // Fixed Number: the width each column gets in the frame (shown, as in InDesign).
     let inner = frame_width.map(|w| w - o.inset[1] - o.inset[3]).unwrap_or(0.0);
@@ -600,7 +606,7 @@ pub(crate) fn text_frame_fields(o: &designcraft_doc::TextFrameOptions, units: Un
     let kind = |v: Value| v.as_str().unwrap_or_default().to_string();
     // A frame without a custom baseline grid shows the document grid's start and increment.
     let grid = o.baseline_grid.unwrap_or_else(|| {
-        let g = app.session.active().map(|s| s.doc.settings.baseline_grid.clone()).unwrap_or_default();
+        let g = doc_grid;
         let relative_to = match g.relative_to {
             designcraft_doc::GridRelative::TopOfPage => designcraft_doc::FrameGridRelative::TopOfPage,
             designcraft_doc::GridRelative::TopMargin => designcraft_doc::FrameGridRelative::TopMargin,
