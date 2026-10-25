@@ -295,7 +295,8 @@ pub fn flyout(app: &mut DesignApp, ctx: &egui::Context) {
                             }
                         }
                         ui.painter().galley(egui::pos2(rect.left() + 12.0, rect.center().y - galley.size().y / 2.0), galley, Color32::WHITE);
-                        let response = craft_ui::tabs::Tab::new(ui.scope_id().with(("iconic-tab", panel)), &label, active).show_at(ui, rect, |_, _| {});
+                        let response =
+                            craft_ui::tabs::Tab::new(ui.scope_id().with(("iconic-tab", panel)), &label, active).show_at(ui, rect, |_, _| {});
                         if response.clicked() {
                             let _ = app.run("window.panel", serde_json::json!({"panel":panel}));
                         }
