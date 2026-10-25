@@ -3122,8 +3122,10 @@ fn distribute(s: &mut Session, p: &Value) -> Result<Value> {
     if ids.len() < 3 && fixed.is_none() {
         return Err(bad("object.distribute", "select at least three objects"));
     }
-    if let Some(edge) = str_param(p, "edge") {
-        return distribute_by_edge(s, &ids, edge, fixed);
+    match p.get("edge") {
+        None | Some(Value::Null) => {}
+        Some(Value::String(edge)) => return distribute_by_edge(s, &ids, edge, fixed),
+        Some(v) => return Err(bad("object.distribute", format!("edge must be left, hcenter, right, top, vcenter or bottom, not {v}"))),
     }
     let horizontal = str_param(p, "axis") != Some("vertical");
     let by_spacing = str_param(p, "by") == Some("spacing") || fixed.is_some();
@@ -3155,19 +3157,27 @@ fn distribute(s: &mut Session, p: &Value) -> Result<Value> {
                 targets.push(c0 + (c1 - c0) * k as f64 / (n - 1) as f64 - size(r) / 2.0);
             }
         }
-        for ((id, r), t) in items.iter().zip(targets) {
-            let delta = t - lo(r);
-            if let Some(it) = d.item_mut(*id) {
-                // Keep locked items in the spacing calculation, as align does for its reference.
-                if it.locked {
-                    continue;
-                }
-                let v = if horizontal { Vec2::new(delta, 0.0) } else { Vec2::new(0.0, delta) };
-                it.xf = Affine::translate(v) * it.xf;
-            }
-        }
-        ok()
+        let moves: Vec<(ItemId, f64)> = items.iter().zip(targets).map(|((id, r), t)| (*id, t - lo(r))).collect();
+        // Keep locked items in the spacing calculation, as align does for its reference.
+        move_along(d, &moves, horizontal)
     })
+}
+
+/// Moves each item by its distance along the axis (locked ones stay); a distance that isn't
+/// finite (a spacing too large to add up) is an error before anything moves.
+fn move_along(d: &mut designcraft_doc::Document, moves: &[(ItemId, f64)], horizontal: bool) -> Result<Value> {
+    if moves.iter().any(|(_, delta)| !delta.is_finite()) {
+        return Err(bad("object.distribute", "the spacing puts objects out of range"));
+    }
+    for (id, delta) in moves {
+        if let Some(it) = d.item_mut(*id)
+            && !it.locked
+        {
+            let v = if horizontal { Vec2::new(*delta, 0.0) } else { Vec2::new(0.0, *delta) };
+            it.xf = Affine::translate(v) * it.xf;
+        }
+    }
+    ok()
 }
 
 /// Distribute Objects by a line of each object, as InDesign's six buttons: its top, vertical
@@ -3193,22 +3203,19 @@ fn distribute_by_edge(s: &mut Session, ids: &[ItemId], edge: &str, spacing: Opti
         if n < 2 {
             return ok();
         }
-        for (k, (id, cur)) in items.iter().enumerate() {
-            let target = match spacing {
-                Some(gap) => first + gap * k as f64,
-                None => first + (last - first) * k as f64 / (n - 1) as f64,
-            };
-            if let Some(it) = d.item_mut(*id) {
-                // Locked items count as references but stay where they are, as with align.
-                if it.locked {
-                    continue;
-                }
-                let delta = target - cur;
-                let v = if horizontal { Vec2::new(delta, 0.0) } else { Vec2::new(0.0, delta) };
-                it.xf = Affine::translate(v) * it.xf;
-            }
-        }
-        ok()
+        let moves: Vec<(ItemId, f64)> = items
+            .iter()
+            .enumerate()
+            .map(|(k, (id, cur))| {
+                let target = match spacing {
+                    Some(gap) => first + gap * k as f64,
+                    None => first + (last - first) * k as f64 / (n - 1) as f64,
+                };
+                (*id, target - cur)
+            })
+            .collect();
+        // Locked items count as references but stay where they are, as with align.
+        move_along(d, &moves, horizontal)
     })
 }
 
@@ -3732,6 +3739,13 @@ mod step_repeat_tests {
                 let e = s.execute("object.distribute", &json!({"edge": edge, "spacing": spacing, "ids": ids})).unwrap_err();
                 assert!(e.to_string().contains("spacing must be a finite number"), "{e}");
             }
+        }
+        // An edge that isn't a name, and a spacing too large to add up: errors, nothing moves.
+        for edge in [json!(42), json!(true)] {
+            assert!(s.execute("object.distribute", &json!({"edge": edge, "ids": ids})).is_err(), "{edge}");
+        }
+        for edge in [json!("top"), Value::Null] {
+            assert!(s.execute("object.distribute", &json!({"edge": edge, "spacing": f64::MAX, "ids": ids})).is_err(), "{edge}");
         }
         assert!(std::sync::Arc::ptr_eq(&before, &s.doc().unwrap().doc), "nothing moved");
     }
