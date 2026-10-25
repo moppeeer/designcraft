@@ -2154,7 +2154,8 @@ pub fn show(app: &mut DesignApp, ctx: &egui::Context) {
     let Some(mut d) = app.ui.dialog.clone() else { return };
     // Enter and Escape belong to an open popup (a menu, a name field) rather than the dialog.
     // Read before the dialog draws: a popup closed by this frame's Escape is still open here.
-    let popup_open = egui::Popup::is_any_open(ctx);
+    // Bullets and Numbering's Add Bullets window takes them for its own OK and Cancel.
+    let popup_open = egui::Popup::is_any_open(ctx) || d.b("addBullets");
     let mut result: Option<bool> = None;
     let alert_title = d.s("title");
     let title = match d.id.as_str() {
@@ -5068,7 +5069,8 @@ const LIST_SPECIALS: [(&str, &str); 6] =
 
 /// A list label text (Text After, Number), shown with its tab as `^t`; labels expand
 /// metacharacters, so the typed text is stored as it is. As InDesign's: ▾ chooses a white space
-/// for the whole text, ▸ adds a special character to it.
+/// for the whole of Text After (the Number has none: it would lose its `^#`), ▸ adds a special
+/// character to it.
 fn list_text(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Value, label: &str, key: &str) {
     crate::rtl::label(ui, crate::i18n::tr(lang, label));
     let mut s = para_value(d, pv, key).as_str().unwrap_or("").replace('\t', "^t");
@@ -5077,15 +5079,17 @@ fn list_text(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Value, label: &
         if ui.add(egui::TextEdit::singleline(&mut s).desired_width(160.0)).changed() {
             para_set(d, key, json!(s));
         }
-        let spaces = crate::icons::button(ui, "chevron-down", 20.0, false, crate::i18n::tr(lang, "Insert White Space"));
-        egui::Popup::menu(&spaces).show(|ui| {
-            for (name, meta) in LIST_SPACES {
-                if ui.button(crate::rtl::widget(ui, crate::i18n::tr(lang, name))).clicked() {
-                    para_set(d, key, json!(meta));
-                    ui.close();
+        if key == "listSeparator" {
+            let spaces = crate::icons::button(ui, "chevron-down", 20.0, false, crate::i18n::tr(lang, "Insert White Space"));
+            egui::Popup::menu(&spaces).show(|ui| {
+                for (name, meta) in LIST_SPACES {
+                    if ui.button(crate::rtl::widget(ui, crate::i18n::tr(lang, name))).clicked() {
+                        para_set(d, key, json!(meta));
+                        ui.close();
+                    }
                 }
-            }
-        });
+            });
+        }
         let specials = crate::icons::button(ui, "chevron-right", 18.0, false, crate::i18n::tr(lang, "Insert Special Character"));
         egui::Popup::menu(&specials).show(|ui| {
             for (name, meta) in LIST_SPECIALS {
@@ -5334,6 +5338,16 @@ fn add_bullets(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, lu: &ListUi<'_>) {
                 });
             });
         });
+    // Enter and Escape are its OK and Cancel (the dialog's own don't take them while it is open),
+    // unless one of its menus (Font Family, Font Style) has them.
+    if !egui::Popup::is_any_open(ui.ctx()) {
+        if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !d.s("addBulletChar").is_empty() {
+            action = Some(true);
+        }
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            open = false;
+        }
+    }
     if !open {
         d.fields.insert("addBullets".into(), json!(false));
     }
@@ -8640,6 +8654,19 @@ mod tests {
             (Some(json!("\u{2192}")), Some(json!("Source Serif 4")), Some(json!(false)))
         );
         assert!(h.query_by_label("U+2192").is_some(), "the added bullet has a cell");
+        // In Add Bullets, Enter is its OK and Escape its Cancel: the dialog stays open.
+        for (key, added) in [(egui::Key::Enter, true), (egui::Key::Escape, false)] {
+            h.get_by_label("Add…").click();
+            h.run_steps(3);
+            let glyph = if added { "\u{2605}" } else { "\u{2606}" };
+            h.state_mut().ui.dialog.as_mut().unwrap().fields.insert("addBulletChar".into(), json!(glyph));
+            h.run_steps(2);
+            h.key_press(key);
+            h.run_steps(3);
+            assert_eq!(h.state().ui.dialog.as_ref().map(|d| d.id.as_str()), Some("paragraphLocal"), "{key:?}");
+            assert_eq!(field(&h, "addBullets"), Some(json!(false)), "{key:?} closes Add Bullets");
+            assert_eq!(field(&h, "p.bulletChar") == Some(json!(glyph)), added, "{key:?}");
+        }
         // Delete: the added bullet goes, and the bullet goes back to InDesign's first.
         h.get_by_label("Delete").click();
         h.run_steps(3);
@@ -8668,6 +8695,13 @@ mod tests {
         confirm(h.state_mut()).unwrap();
         assert_eq!(sep(&mut h), json!("^>"));
         assert_eq!(h.state().session.doc().unwrap().history.undo.len(), undo + 1);
+        // Numbers: Text After has its ▾, the Number (whose `^#` it would replace) doesn't.
+        h.state_mut().run("app.bulletsNumberingDialog", json!({})).unwrap();
+        h.state_mut().ui.dialog.as_mut().unwrap().fields.insert("p.listType".into(), json!("numbers"));
+        h.run_steps(3);
+        assert!(h.query_by_label("Number:").is_some());
+        assert_eq!(h.query_all_by_label("Insert Special Character").count(), 2);
+        assert_eq!(h.query_all_by_label("Insert White Space").count(), 1);
     }
 
     #[test]
