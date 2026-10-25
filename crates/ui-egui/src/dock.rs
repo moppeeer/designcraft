@@ -219,11 +219,7 @@ pub fn flyout(app: &mut DesignApp, ctx: &egui::Context) {
     let label = crate::i18n::tr(&app.ui.language, panel_label(&id)).to_owned();
     let screen = ctx.content_rect();
     let dock_w = if app.ui.dock_expanded { ctx.memory(|m| m.area_rect(egui::Id::unique("dock")).map(|r| r.width())).unwrap_or(280.0) } else { 0.0 };
-    let rail_left = if app.ui.docking.is_some() {
-        egui::containers::panel::PanelState::load(ctx, egui::Id::unique("shared-panel-icons")).map(|state| state.outer_rect.left())
-    } else {
-        None
-    };
+    let rail_left = if app.ui.docking.is_some() { crate::panel_docking::icon_rail_rect(ctx).map(|r| r.left()) } else { None };
     let right = rail_left.unwrap_or(screen.max.x - icon_column_width(app) - dock_w);
     let pos = egui::pos2((right - 262.0).max(screen.left()), 120.0);
     let mut open = true;

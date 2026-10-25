@@ -619,7 +619,16 @@ fn icon_rail(app: &mut DesignApp, ui: &mut egui::Ui) {
         })
         .response
         .rect;
-    let _ = column;
+    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::unique(ICON_RAIL_RECT), column));
+}
+
+/// Temp-data key of the icon rail's rect, as last drawn: a panel's id depends on the `Ui` it is
+/// shown in, so others can't look up its state by name.
+const ICON_RAIL_RECT: &str = "shared-panel-icons-rect";
+
+/// Where the icon rail was last drawn.
+pub(crate) fn icon_rail_rect(ctx: &egui::Context) -> Option<egui::Rect> {
+    ctx.data(|d| d.get_temp(egui::Id::unique(ICON_RAIL_RECT)))
 }
 
 pub(crate) fn legacy_tab(app: &mut DesignApp, ui: &mut egui::Ui, panel: &str, response: &egui::Response) {
