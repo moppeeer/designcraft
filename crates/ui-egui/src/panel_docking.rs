@@ -15,14 +15,14 @@ struct LegacyDrag {
 
 pub(crate) fn cancel_gesture(app: &mut DesignApp, ctx: &egui::Context) {
     cancel_legacy_drag(app, ctx);
-    craft_ui::docking::cancel_drag::<String>(ctx, egui::Id::new("designcraft-panel-docking"));
+    craft_ui::docking::cancel_drag::<String>(ctx, egui::Id::unique("designcraft-panel-docking"));
 }
 
 fn cancel_legacy_drag(app: &mut DesignApp, ctx: &egui::Context) -> bool {
-    let key = egui::Id::new("designcraft-panel-docking").with("legacy-origin");
+    let key = egui::Id::unique("designcraft-panel-docking").with("legacy-origin");
     let previous = ctx.data_mut(|data| data.remove_temp::<LegacyDrag>(key));
     if let Some(previous) = previous {
-        craft_ui::docking::cancel_drag::<String>(ctx, egui::Id::new("designcraft-panel-docking"));
+        craft_ui::docking::cancel_drag::<String>(ctx, egui::Id::unique("designcraft-panel-docking"));
         if previous.generation != app.ui.docking_generation {
             return false;
         }
@@ -465,7 +465,7 @@ fn change(app: &mut DesignApp, operation: &str, params: &Value) -> Result<Value,
 }
 
 pub(crate) fn show(app: &mut DesignApp, ui: &mut egui::Ui) -> bool {
-    let area = egui::Id::new("designcraft-panel-docking");
+    let area = egui::Id::unique("designcraft-panel-docking");
     let changed_workspace = ui.ctx().data_mut(|data| {
         let previous = data.get_temp::<u64>(area.with("generation"));
         data.insert_temp(area.with("generation"), app.ui.docking_generation);
@@ -497,7 +497,7 @@ pub(crate) fn show(app: &mut DesignApp, ui: &mut egui::Ui) -> bool {
         blocked.push(ui.ctx().content_rect());
     } else if crate::story_editor::visible(app) {
         // The editor is rendered after the dock; block its unmeasured first frame conservatively.
-        let rect = ui.ctx().memory(|m| m.area_rect(egui::Id::new("story_editor"))).unwrap_or_else(|| ui.ctx().content_rect());
+        let rect = ui.ctx().memory(|m| m.area_rect(egui::Id::unique("story_editor"))).unwrap_or_else(|| ui.ctx().content_rect());
         blocked.push(rect);
     }
     if app.ui.open_panel.is_some() {
@@ -522,7 +522,7 @@ pub(crate) fn show(app: &mut DesignApp, ui: &mut egui::Ui) -> bool {
         style.panels_label = crate::i18n::tr(&language, "Panels").to_owned();
         style.resize_label = crate::i18n::tr(&language, "Resize panels").to_owned();
         style.resize_window_label = crate::i18n::tr(&language, "Resize panel window").to_owned();
-        let mut area = craft_ui::docking::DockArea::new(egui::Id::new("designcraft-panel-docking")).blocked_rects(&blocked);
+        let mut area = craft_ui::docking::DockArea::new(egui::Id::unique("designcraft-panel-docking")).blocked_rects(&blocked);
         if let Some(panel) = &raise {
             area = area.raise_panel(panel.clone());
         }
@@ -564,7 +564,7 @@ pub(crate) fn show(app: &mut DesignApp, ui: &mut egui::Ui) -> bool {
         if !output.actions.iter().any(|action| matches!(action, Action::Move { .. } | Action::Float { .. })) && cancel_legacy_drag(app, ui.ctx()) {
             return app.ui.docking.is_some();
         }
-        ui.ctx().data_mut(|data| data.remove::<LegacyDrag>(egui::Id::new("designcraft-panel-docking").with("legacy-origin")));
+        ui.ctx().data_mut(|data| data.remove::<LegacyDrag>(egui::Id::unique("designcraft-panel-docking").with("legacy-origin")));
     }
     if app.ui.open_panel.is_some() && dock_drag_started(ui.ctx()) {
         // As in InDesign, starting to drag a panel collapses the icon panel's flyout.
@@ -635,11 +635,11 @@ pub(crate) fn legacy_tab(app: &mut DesignApp, ui: &mut egui::Ui, panel: &str, re
             egui::vec2(bounds.width().clamp(240.0, 600.0), bounds.height().clamp(200.0, 600.0)),
         );
         if ensure(&mut layout, id).is_ok()
-            && craft_ui::docking::begin_drag(ui.ctx(), egui::Id::new("designcraft-panel-docking"), id.to_string(), source)
+            && craft_ui::docking::begin_drag(ui.ctx(), egui::Id::unique("designcraft-panel-docking"), id.to_string(), source)
         {
             ui.ctx().data_mut(|data| {
                 data.insert_temp(
-                    egui::Id::new("designcraft-panel-docking").with("legacy-origin"),
+                    egui::Id::unique("designcraft-panel-docking").with("legacy-origin"),
                     LegacyDrag {
                         layout: app.ui.docking.clone(),
                         open_panel: app.ui.open_panel.clone(),
@@ -669,7 +669,7 @@ fn three_line_button(app: &mut DesignApp, ui: &mut egui::Ui, panel: &str) {
     let t = crate::theme::Tokens::get(ui.ctx());
     let area = ui.max_rect();
     let r = egui::Rect::from_center_size(area.center(), egui::vec2(18.0, 18.0));
-    let menu = ui.interact(r, ui.id().with("panel-menu"), egui::Sense::click());
+    let menu = ui.interact(r, ui.scope_id().with("panel-menu"), egui::Sense::click());
     if menu.hovered() {
         ui.painter().rect_filled(r, 3.0, t.hover);
     }

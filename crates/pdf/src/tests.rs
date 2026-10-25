@@ -164,6 +164,20 @@ fn spreads_and_ranges() {
 }
 
 #[test]
+fn pdfx4_xmp_has_metadata_date_and_version_id() {
+    let d = doc_with_text("Print me");
+    let opts = PdfOptions { standard: Standard::PdfX4, created: Some(1_700_000_000), ..Default::default() };
+    let r = export_pdf_with_report(&d, &Cache::new(), &opts).unwrap();
+    let text = String::from_utf8_lossy(&r.bytes).to_string();
+    assert!(text.contains("<xmp:MetadataDate>2023-11-14T22:13:20Z</xmp:MetadataDate>"), "metadata date");
+    assert!(text.contains("<xmpMM:VersionID>1</xmpMM:VersionID>"), "version id");
+    assert!(crate::check_pdfx4(&r.bytes).is_empty());
+    // Without the two entries the check says so.
+    let stripped = text.replace("xmp:MetadataDate", "xmp:Other").replace("xmpMM:VersionID", "xmpMM:Other");
+    assert_eq!(crate::check_pdfx4(stripped.as_bytes()).iter().filter(|i| i.contains("xmp")).count(), 2);
+}
+
+#[test]
 fn standards() {
     let d = doc_with_text("Archive me");
     let r = export_pdf_with_report(&d, &Cache::new(), &PdfOptions { standard: Standard::PdfA2b, created: Some(1_700_000_000), ..Default::default() });
@@ -184,6 +198,25 @@ fn standards() {
     assert!(crate::check_pdfx4(&plain).len() >= 3);
     assert_eq!(Standard::parse("PDF/X-4"), Some(Standard::PdfX4));
     assert_eq!(Standard::parse("pdfa-2b"), Some(Standard::PdfA2b));
+}
+
+#[test]
+fn table_gradient_fill_exports_a_shading() {
+    let mut d = Document::new(&NewDocument::default());
+    let mut gradient = designcraft_color::Gradient::default();
+    gradient.stops[0].color = Color::rgb(1.0, 0.0, 0.0);
+    gradient.stops[1].color = Color::rgb(0.0, 0.0, 1.0);
+    d.swatches.push(Swatch { name: "Table gradient".into(), value: SwatchValue::Gradient { gradient }, locked: false, named: true, hidden: false });
+    let (_, sid) = d.add_text_frame(SpreadRef::Doc(0), Rect::new(36.0, 36.0, 336.0, 300.0), d.default_layer(), "", ParaFormat::default()).unwrap();
+    let mut t = designcraft_doc::Table::new(1, 1, 2, 0, 0, 200.0);
+    t.rows[0].height = 40.0;
+    t.rows[0].mode = designcraft_doc::RowHeightMode::Exactly;
+    for cell in &mut t.cells {
+        cell.fill = "Table gradient".into();
+    }
+    d.story_mut(sid).unwrap().insert_table(0, t);
+    let pdf = uncompressed(&d, PdfOptions::default());
+    assert!(pdf.contains("/ShadingType 2") || pdf.contains("/ShadingType2"), "table fill must export a linear gradient");
 }
 
 #[test]
@@ -243,6 +276,7 @@ fn place(d: &mut Document, data: Vec<u8>, px: (u32, u32)) {
     let id = ItemId(d.alloc());
     let mut it = Item::new(id, lid, designcraft_doc::Shape::Rectangle, designcraft_geom::shapes::rectangle(Rect::new(72.0, 72.0, 272.0, 172.0)));
     it.content = designcraft_doc::Content::Graphic(designcraft_doc::Graphic {
+        layer_options: None,
         asset,
         size: (px.0 as f64, px.1 as f64),
         xf: designcraft_geom::Affine::translate((72.0, 72.0)) * designcraft_geom::Affine::scale(50.0),
@@ -324,6 +358,26 @@ fn cmyk_tiff_keeps_its_inks() {
         assert_eq!(images, vec![("DeviceCMYK".to_string(), px.clone())], "{standard:?}");
         assert_eq!(images[0].1[..4], [0, 0, 0, 255], "K only");
     }
+}
+
+/// A placed greyscale TIFF went into PDFs as DeviceRGB, unlike a greyscale PNG or JPEG (#1426):
+/// a page holding only a black-and-white scan declared colour.
+#[test]
+fn grey_tiff_exports_as_device_gray() {
+    let px: Vec<u8> = vec![0, 64, 128, 255, 255, 128, 64, 0];
+    let mut tif = Vec::new();
+    tiff::encoder::TiffEncoder::new(std::io::Cursor::new(&mut tif)).unwrap().write_image::<tiff::encoder::colortype::Gray8>(4, 2, &px).unwrap();
+    let mut d = doc_with_text("x");
+    place(&mut d, tif, (4, 2));
+    for standard in [Standard::None, Standard::PdfX4] {
+        let r = export_pdf_with_report(&d, &Cache::new(), &PdfOptions { standard, ..Default::default() }).unwrap();
+        assert!(r.warnings.is_empty(), "{standard:?}: {:?}", r.warnings);
+        assert_eq!(image_xobjects(&r.bytes), vec![("DeviceGray".to_string(), px.clone())], "{standard:?}");
+    }
+    // Recompressed, it stays a grey JPEG.
+    let r = export_pdf_with_report(&d, &Cache::new(), &PdfOptions { compress_images: true, compress: false, ..Default::default() }).unwrap();
+    let s = String::from_utf8_lossy(&r.bytes);
+    assert!(s.contains("/DCTDecode") && s.contains("/DeviceGray") && !s.contains("/DeviceRGB"), "a grey JPEG");
 }
 
 /// An 8×8 raster encoded as `fmt`; `alpha` gives it a transparent corner.
@@ -773,6 +827,38 @@ fn empty_and_populated_export_metadata_preserve_key_presence() {
         assert!(s.contains(key), "missing populated metadata {key}");
     }
     assert!(s.contains("Synthetic title") && s.contains("Test author"));
+}
+
+/// File › File Info goes into the PDF's document information and XMP; the export options' title
+/// and author replace File Info's, and PDF/X-4 and Print Booklet keep them.
+#[test]
+fn file_info_is_written_into_the_pdf_metadata() {
+    let mut d = doc_with_text("Body");
+    d.title = "flyer-v3".into();
+    d.file_info.document_title = "Spring Catalog".into();
+    d.file_info.author = "Ana Ruiz".into();
+    d.file_info.description = "Shoes for the spring season".into();
+    d.file_info.keywords = vec!["spring".into(), "shoes".into()];
+    let s = uncompressed(&d, PdfOptions::default());
+    for want in ["/Title(Spring Catalog)", "/Author(Ana Ruiz)", "/Subject(Shoes for the spring season)", "/Keywords(spring, shoes)"] {
+        assert!(s.contains(want), "missing {want}");
+    }
+    for want in ["<dc:title>", "<dc:creator>", "<dc:description>", "spring, shoes</pdf:Keywords>"] {
+        assert!(s.contains(want), "XMP missing {want}");
+    }
+    assert!(!s.contains("flyer-v3"), "the document's name is not the title");
+    let s = uncompressed(&d, PdfOptions { title: Some("Proof".into()), author: Some("Studio".into()), ..Default::default() });
+    assert!(s.contains("/Title(Proof)") && s.contains("/Author(Studio)") && !s.contains("Ana Ruiz"), "the options win");
+    let s = uncompressed(&d, PdfOptions { standard: Standard::PdfX4, ..Default::default() });
+    assert!(s.contains("GTS_PDFXVersion"), "PDF/X-4");
+    let booklet = export_booklet(&d, &Cache::new(), &BookletOptions::default()).unwrap();
+    let b = String::from_utf8_lossy(&booklet.bytes);
+    for (name, s) in [("PDF/X-4", s.as_str()), ("Print Booklet", &*b)] {
+        for want in ["/Title(Spring Catalog)", "/Author(Ana Ruiz)", "/Subject(Shoes for the spring season)", "/Keywords(spring, shoes)"] {
+            assert!(s.contains(want), "{name} missing {want}");
+        }
+        assert!(s.contains("<dc:description>") && s.contains("spring, shoes</pdf:Keywords>"), "{name} XMP");
+    }
 }
 
 /// A swatch applied to a placed greyscale image colours it (#1094): the image's darkness is the
