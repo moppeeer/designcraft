@@ -35,7 +35,9 @@ fn text_fields(app: &DesignApp, fields: &mut Value, paragraph: Option<&str>, nex
     fields["applyNext"] = json!(next);
     fields["tfBase"] = serde_json::to_value(tf).unwrap_or_default();
     fields["insetLinked"] = json!(tf.inset.iter().all(|v| (v - tf.inset[0]).abs() < 1e-9));
-    if let (Value::Object(f), Value::Object(shown)) = (fields, crate::dialogs::text_frame_fields(tf, units, None, &crate::dialogs::document_grid(app))) {
+    if let (Value::Object(f), Value::Object(shown)) =
+        (fields, crate::dialogs::text_frame_fields(tf, units, None, &crate::dialogs::document_grid(app)))
+    {
         f.extend(shown);
     }
 }

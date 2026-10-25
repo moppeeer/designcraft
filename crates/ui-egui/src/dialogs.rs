@@ -594,7 +594,12 @@ pub(crate) fn document_grid(app: &DesignApp) -> designcraft_doc::BaselineGrid {
 /// Text frame options `o` as the Text Frame Options dialog's fields, measures in `units`; with the
 /// frame's width, a Fixed Number column shows the width it gets. Without a custom baseline grid of
 /// its own, the frame shows `doc_grid`'s start and increment.
-pub(crate) fn text_frame_fields(o: &designcraft_doc::TextFrameOptions, units: Unit, frame_width: Option<f64>, doc_grid: &designcraft_doc::BaselineGrid) -> Value {
+pub(crate) fn text_frame_fields(
+    o: &designcraft_doc::TextFrameOptions,
+    units: Unit,
+    frame_width: Option<f64>,
+    doc_grid: &designcraft_doc::BaselineGrid,
+) -> Value {
     let fm = |v: f64| json!(format_measure(v, units));
     // Fixed Number: the width each column gets in the frame (shown, as in InDesign).
     let inner = frame_width.map(|w| w - o.inset[1] - o.inset[3]).unwrap_or(0.0);
