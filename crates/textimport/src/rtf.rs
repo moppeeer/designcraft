@@ -264,7 +264,7 @@ pub fn import_with(bytes: &[u8], opts: &designcraft_doc::TextImportOptions) -> R
                     "strike" => restyle(&|s| s.strike = on),
                     // Half-points; sizes outside the engine's 0.1–1296 pt range fall back to the default.
                     "fs" => restyle(&|s| {
-                        s.size = param.map(|p| p as f64 / 2.0).filter(|pt| (0.1..=1296.0).contains(pt));
+                        s.size = param.map(|p| p as f64 / 2.0).and_then(designcraft_doc::attrs::imported_type_size);
                     }),
                     "plain" => restyle(&|s| {
                         s.bold = false;
