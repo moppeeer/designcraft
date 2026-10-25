@@ -1216,12 +1216,19 @@ fn draw_item_edges(painter: &egui::Painter, xf: &Xf, doc: &Document, it: &Item, 
 /// draws it; other shapes span their bounds.
 fn frame_x(it: &Item) -> [(Point, Point); 2] {
     // A rectangle (slanted or not: four corner points, no handles). Ellipses, polygons (a
-    // four-sided one is a diamond) and curved paths keep the X across their bounds.
+    // four-sided one is a diamond) and curved paths keep the X across their bounds. Edited points
+    // make any of them a path: a four-cornered one whose corners would cross as a plus (a diamond,
+    // edited) keeps the bounds too.
+    let crosses = |a: Point, b: Point| {
+        let d = b - a;
+        d.x.abs() > 0.18 * d.hypot() && d.y.abs() > 0.18 * d.hypot()
+    };
     if matches!(it.shape, designcraft_doc::Shape::Rectangle | designcraft_doc::Shape::Path)
         && let [sp] = it.path.subpaths.as_slice()
         && sp.closed
         && let [c0, c1, c2, c3] = sp.anchors.as_slice()
         && sp.anchors.iter().all(|a| a.h_in == a.p && a.h_out == a.p)
+        && (it.shape == designcraft_doc::Shape::Rectangle || (crosses(c0.p, c2.p) && crosses(c1.p, c3.p)))
     {
         return [(c0.p, c2.p), (c1.p, c3.p)];
     }
@@ -3745,6 +3752,13 @@ mod tests {
         }
         let lines: Vec<_> = frame_x(&diamond).to_vec();
         assert!(lines.iter().all(|(a, b)| (a.x - b.x).abs() > 1e-6 && (a.y - b.y).abs() > 1e-6), "diagonals, not a plus: {lines:?}");
+        // Still after one of its points moves (which makes it a path).
+        let p = app.run("frame.create", json!({"rect": [300, 200, 400, 260], "shape": "polygon", "sides": 4, "starInset": 0})).unwrap()["id"].as_u64().unwrap();
+        app.run("path.moveAnchors", json!({"id": p, "anchors": [[0, 0]], "dx": 5, "dy": 0})).unwrap();
+        let it = app.session.active().unwrap().doc.item(designcraft_doc::ItemId(p)).unwrap().clone();
+        assert_eq!(it.shape, designcraft_doc::Shape::Path);
+        let lines: Vec<_> = frame_x(&it).to_vec();
+        assert!(lines.iter().all(|(a, b)| (a.x - b.x).abs() > 1e-6 && (a.y - b.y).abs() > 1e-6), "an edited diamond: {lines:?}");
     }
 
     /// Each preview mode's shown area: Preview stops at the trim, Bleed reaches the bleed box and
