@@ -90,7 +90,7 @@ fn customized_icon_rail_toggles_a_flyout_next_to_the_actual_dock() {
     let icon = h.get_by_label("Color").rect().center();
     crate::test_window::click_at(&mut h, icon);
     assert_eq!(h.state().app.ui.open_panel.as_deref(), Some("color"));
-    let flyout = h.ctx.memory(|m| m.area_rect(egui::Id::new("panel_flyout"))).expect("flyout rendered");
+    let flyout = h.ctx.memory(|m| m.area_rect(egui::Id::unique("panel_flyout"))).expect("flyout rendered");
     let rail = crate::test_window::panel_rect(&h, "shared-panel-icons");
     assert!(flyout.right() <= rail.left() + 2.0, "flyout {flyout:?}, rail {rail:?}");
     assert_eq!(h.state().app.ui.docking, before);
@@ -148,7 +148,7 @@ fn customized_icon_rail_opens_paragraph_styles_as_a_flyout() {
     crate::test_window::click_at(&mut h, icon);
     assert_eq!(h.state().app.ui.open_panel.as_deref(), Some("paragraphStyles"));
     assert_eq!(h.state().app.ui.docking, before);
-    assert!(h.ctx.memory(|m| m.area_rect(egui::Id::new("panel_flyout"))).is_some());
+    assert!(h.ctx.memory(|m| m.area_rect(egui::Id::unique("panel_flyout"))).is_some());
     crate::test_window::click_at(&mut h, icon);
     assert!(h.state().app.ui.open_panel.is_none());
     h.state_mut().app.run("window.panel", json!({"panel":"paragraphStyles"})).unwrap();
@@ -164,8 +164,8 @@ fn dragging_a_panel_collapses_the_icon_panel_flyout() {
     app.run("window.panel", json!({"panel":"color"})).unwrap();
     let before = app.ui.docking.clone();
     let mut h = crate::test_window::open(app, vec2(1440.0, 900.0));
-    assert!(h.ctx.memory(|m| m.area_rect(egui::Id::new("panel_flyout"))).is_some());
-    let tab = egui::Id::new("designcraft-panel-docking").with(("tab", &"pages".to_string()));
+    assert!(h.ctx.memory(|m| m.area_rect(egui::Id::unique("panel_flyout"))).is_some());
+    let tab = egui::Id::unique("designcraft-panel-docking").with(("tab", &"pages".to_string()));
     let from = h.ctx.read_response(tab).expect("Pages tab").rect.center();
     h.event(Event::PointerMoved(from));
     h.run_steps(1);
@@ -187,7 +187,7 @@ fn dragging_a_panel_collapses_the_icon_panel_flyout() {
     // So does moving a floating group by its grip.
     h.state_mut().app.run("window.panel", json!({"panel":"color"})).unwrap();
     h.run_steps(2);
-    let grip = egui::Id::new("designcraft-panel-docking").with(("move-group", Some(&"layers".to_string())));
+    let grip = egui::Id::unique("designcraft-panel-docking").with(("move-group", Some(&"layers".to_string())));
     let from = h.ctx.read_response(grip).expect("Layers grip").rect.center();
     h.event(Event::PointerMoved(from));
     h.run_steps(1);

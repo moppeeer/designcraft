@@ -502,7 +502,7 @@ pub(crate) fn show(app: &mut DesignApp, ui: &mut egui::Ui) -> bool {
     }
     if app.ui.open_panel.is_some() {
         // A foreground flyout must not accept a dock drop through its body.
-        blocked.push(ui.ctx().memory(|m| m.area_rect(egui::Id::new("panel_flyout"))).unwrap_or_else(|| ui.ctx().content_rect()));
+        blocked.push(ui.ctx().memory(|m| m.area_rect(egui::Id::unique("panel_flyout"))).unwrap_or_else(|| ui.ctx().content_rect()));
     }
     let t = crate::theme::Tokens::get(ui.ctx());
     let language = app.ui.language.clone();
@@ -583,7 +583,7 @@ pub(crate) fn show(app: &mut DesignApp, ui: &mut egui::Ui) -> bool {
 /// group's grip, a divider or a resize corner.
 fn dock_drag_started(ctx: &egui::Context) -> bool {
     let Some(started) = ctx.drag_started_id() else { return false };
-    let owned = egui::Id::new("designcraft-panel-docking").with("owned-interactions");
+    let owned = egui::Id::unique("designcraft-panel-docking").with("owned-interactions");
     ctx.data(|data| data.get_temp::<Vec<egui::Id>>(owned)).is_some_and(|ids| ids.contains(&started))
 }
 
