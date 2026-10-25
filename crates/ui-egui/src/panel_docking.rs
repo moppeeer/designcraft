@@ -8,7 +8,7 @@ use crate::DesignApp;
 type MeasuredBodies = std::collections::BTreeMap<String, egui::Rect>;
 
 fn bodies_id() -> egui::Id {
-    egui::Id::new("designcraft-panel-docking").with("measured-bodies")
+    egui::Id::unique("designcraft-panel-docking").with("measured-bodies")
 }
 
 #[derive(Clone, Default)]
@@ -378,7 +378,7 @@ fn group_targets(
         let Some(body) = bodies.get(selected).copied().filter(|r| r.is_finite() && r.is_positive()) else { return };
         let rect = egui::Rect::from_min_max(body.min - egui::vec2(0.0, 27.0), body.max);
         let strip = egui::Rect::from_min_max(rect.min, egui::pos2(rect.right(), body.top()));
-        let area = egui::Id::new("designcraft-panel-docking");
+        let area = egui::Id::unique("designcraft-panel-docking");
         let tabs = panels
             .iter()
             .filter_map(|panel| {
@@ -436,7 +436,7 @@ fn group_drop_layout<'a>(app: &'a DesignApp, source: &String, pointer: egui::Pos
 
 fn group_icon_target(app: &DesignApp, ctx: &egui::Context, source: &String, pointer: egui::Pos2, blocked: &[egui::Rect]) -> Option<egui::Rect> {
     group_drop_layout(app, source, pointer, blocked)?;
-    egui::containers::panel::PanelState::load(ctx, egui::Id::new("shared-panel-icons"))
+    egui::containers::panel::PanelState::load(ctx, egui::Id::unique("shared-panel-icons"))
         .map(|state| state.outer_rect)
         .filter(|rect| rect.is_finite() && rect.contains(pointer))
 }
@@ -752,7 +752,7 @@ pub(crate) fn show(app: &mut DesignApp, ui: &mut egui::Ui) -> bool {
     }
     if app.ui.open_panel.is_some() {
         // A foreground flyout must not accept a dock drop through its body.
-        blocked.push(ui.ctx().memory(|m| m.area_rect(egui::Id::new("panel_flyout"))).unwrap_or_else(|| ui.ctx().content_rect()));
+        blocked.push(ui.ctx().memory(|m| m.area_rect(egui::Id::unique("panel_flyout"))).unwrap_or_else(|| ui.ctx().content_rect()));
     }
     let t = crate::theme::Tokens::get(ui.ctx());
     let language = app.ui.language.clone();
@@ -865,7 +865,7 @@ pub(crate) fn show(app: &mut DesignApp, ui: &mut egui::Ui) -> bool {
 /// group's grip, a divider or a resize corner.
 fn dock_drag_started(ctx: &egui::Context) -> bool {
     let Some(started) = ctx.drag_started_id() else { return false };
-    let owned = egui::Id::new("designcraft-panel-docking").with("owned-interactions");
+    let owned = egui::Id::unique("designcraft-panel-docking").with("owned-interactions");
     ctx.data(|data| data.get_temp::<Vec<egui::Id>>(owned)).is_some_and(|ids| ids.contains(&started))
 }
 

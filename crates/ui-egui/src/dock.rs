@@ -288,14 +288,14 @@ pub fn flyout(app: &mut DesignApp, ctx: &egui::Context) {
                             ui.painter().rect_filled(rect, 0.0, t.panel);
                             // Bring the tab of the panel that opened into view once; the strip
                             // stays scrollable afterwards.
-                            let shown = egui::Id::new("iconic-group-tabs-shown");
+                            let shown = egui::Id::unique("iconic-group-tabs-shown");
                             if ui.ctx().data(|d| d.get_temp::<String>(shown)).as_ref() != Some(panel) {
                                 ui.scroll_to_rect(rect, None);
                                 ui.ctx().data_mut(|d| d.insert_temp(shown, panel.clone()));
                             }
                         }
                         ui.painter().galley(egui::pos2(rect.left() + 12.0, rect.center().y - galley.size().y / 2.0), galley, Color32::WHITE);
-                        let response = craft_ui::tabs::Tab::new(ui.id().with(("iconic-tab", panel)), &label, active).show_at(ui, rect, |_, _| {});
+                        let response = craft_ui::tabs::Tab::new(ui.scope_id().with(("iconic-tab", panel)), &label, active).show_at(ui, rect, |_, _| {});
                         if response.clicked() {
                             let _ = app.run("window.panel", serde_json::json!({"panel":panel}));
                         }
