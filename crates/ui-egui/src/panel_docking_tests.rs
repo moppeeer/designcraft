@@ -793,7 +793,7 @@ fn legacy_table_and_control_visibility_work_after_customization_without_document
     app.run("app.tablePanel", json!({})).unwrap();
     assert!(!app.ui.docking.as_ref().unwrap().contains(&"table".into()));
     app.run("app.tablePanel", json!({})).unwrap();
-    app.run("app.tablePanel", json!({})).unwrap();
+    assert!(app.ui.docking.as_ref().unwrap().contains(&"table".into()), "docked again, for closePanel to close");
     let ctx = egui::Context::default();
     let (req, _) = crate::control::ControlRequest::new("ui.set", json!({"closePanel":true,"dockExpanded":false}));
     let crate::control::Outcome::Done(result) = crate::control::handle(&mut app, &ctx, &req) else { panic!("expected synchronous control result") };
