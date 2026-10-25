@@ -18,6 +18,9 @@ use serde_json::{Value, json};
 
 const MAX_OUTPUT_COMPONENT_BYTES: usize = 200;
 
+/// The folder of a package that holds the files its document places.
+const LINKS_FOLDER: &str = "Links";
+
 fn path_error(path: &Path, message: impl std::fmt::Display) -> EngineError {
     EngineError::Other(format!("{}: {message}", path.display()))
 }
@@ -132,8 +135,9 @@ impl OutputRoot {
         {
             use std::os::unix::fs::PermissionsExt;
 
-            // Match fs::write for a new output: 0666 restricted by the caller's umask.
-            builder.permissions(std::fs::Permissions::from_mode(0o666));
+            // Like fs::write for a new output: request 0666 and let the process umask decide the
+            // effective mode (0644 with the usual 022, 0664 with 002).
+            builder.permissions(std::fs::Permissions::from_mode(0o666)); // NOSONAR
         }
         let file = builder.tempfile_in(parent).map_err(|e| path_error(path, e))?;
         #[cfg(unix)]
@@ -282,7 +286,10 @@ fn unique_name(base: String, taken: &mut Vec<String>) -> String {
 }
 
 /// Write each asset's bytes into `dir`; returns the relinked document and the paths written.
-fn write_links(d: &Document, root: &OutputRoot, dir: &Path, only: Option<&[AssetId]>) -> Result<(Document, Vec<PathBuf>)> {
+/// `relative_to` names the folder `dir` is, beside the saved document: the links then read
+/// `Links/logo.png`, so a package holds no path from the machine that made it (#340). `None` links
+/// the copies by their full paths (Links › Copy Link(s) To, which relinks the open document).
+fn write_links(d: &Document, root: &OutputRoot, dir: &Path, only: Option<&[AssetId]>, relative_to: Option<&str>) -> Result<(Document, Vec<PathBuf>)> {
     root.validate_directory(dir)?;
     let mut out = d.clone();
     let mut taken = Vec::new();
@@ -303,7 +310,10 @@ fn write_links(d: &Document, root: &OutputRoot, dir: &Path, only: Option<&[Asset
         let path = dir.join(&name);
         root.write(&path, a.data.as_slice())?;
         let mut na = (**a).clone();
-        na.link = Some(path.to_string_lossy().to_string());
+        na.link = Some(match relative_to {
+            Some(folder) => format!("{folder}/{name}"),
+            None => path.to_string_lossy().to_string(),
+        });
         out.assets.insert(id, Arc::new(na));
         written.push(path);
     }
@@ -387,8 +397,8 @@ fn package(s: &mut Session, p: &Value) -> Result<Value> {
     let links = s.execute("links.list", &json!({}))?;
     let pre = s.execute("preflight.run", &json!({})).unwrap_or(Value::Null);
     let d = s.doc()?.doc.clone();
-    let links_dir = root.child("Links")?;
-    let (packed, mut files) = write_links(&d, &root, &links_dir, None)?;
+    let links_dir = root.child(LINKS_FOLDER)?;
+    let (packed, mut files) = write_links(&d, &root, &links_dir, None, Some(LINKS_FOLDER))?;
     let doc_path = package_output_path(&dir, &title, "designcraft")?;
     root.write(&doc_path, &super::to_bytes(&packed)?)?;
     files.insert(0, doc_path);
@@ -417,12 +427,19 @@ fn package(s: &mut Session, p: &Value) -> Result<Value> {
         .iter()
         .map(|f| format!("  {} {}{}\n", f.family, f.style, copy_font(&root, f, &fonts_dir, &mut copied, &mut taken, &mut files)))
         .collect();
+    // The IDML copy links the placed files, so a per-placement PDF layer choice cannot travel in
+    // it (an external-only IDML export rejects one for the same reason). Say so in the report
+    // instead of leaving a silent difference between the package's copies.
+    let mut idml_layer_note = "";
     if p.get("idml").and_then(Value::as_bool).unwrap_or(true) {
         let path = package_output_path(&dir, &title, "idml")?;
         // The images are in Links/ beside it: link them there, without embedded copies.
         let opts = designcraft_idml::ExportOptions { embed_images: false };
         root.write(&path, &designcraft_idml::export_idml_with(&packed, &opts))?;
         files.push(path);
+        if super::interchange::has_applicable_pdf_layer_overrides(&packed) {
+            idml_layer_note = "\nPlaced PDF layers\nThe IDML copy links the placed PDFs, so it shows their file defaults. The DesignCraft document keeps each placement's Object Layer Options choice.\n";
+        }
     }
     if p.get("pdf").and_then(Value::as_bool).unwrap_or(false) {
         let path = package_output_path(&dir, &title, "pdf")?;
@@ -446,6 +463,7 @@ fn package(s: &mut Session, p: &Value) -> Result<Value> {
     for l in links.as_array().into_iter().flatten() {
         r += &format!("  {} ({})\n", l["name"].as_str().unwrap_or(""), l["status"].as_str().unwrap_or(""));
     }
+    r += idml_layer_note;
     if let Some(issues) = pre.get("issues").and_then(Value::as_array) {
         r += &format!("\nPreflight: {} issue(s)\n", issues.len());
         for i in issues {
@@ -463,7 +481,7 @@ fn copy_links(s: &mut Session, p: &Value) -> Result<Value> {
     let only: Option<Vec<AssetId>> = p.get("assets").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_u64).map(AssetId).collect());
     let d = s.doc()?.doc.clone();
     let root = OutputRoot::new(dir.clone())?;
-    let (relinked, written) = write_links(&d, &root, &dir, only.as_deref())?;
+    let (relinked, written) = write_links(&d, &root, &dir, only.as_deref(), None)?;
     s.edit(|doc, _| {
         doc.assets = relinked.assets;
         Ok(())
@@ -500,6 +518,32 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
+    /// A per-placement PDF layer choice cannot travel in an IDML copy that links its files, so the
+    /// report says the copies differ instead of leaving it to be discovered.
+    #[test]
+    fn package_report_names_placed_pdf_layer_choices() {
+        let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("dc-package-pdf-layers-{}-{nonce}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pdf = super::super::pdflayers::tests::two_layer_pdf();
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"title": "LayeredPackage", "width": 100, "height": 100})).unwrap();
+        let id = s
+            .execute("file.place", &json!({"base64": super::super::base64_encode(&pdf), "name": "art.pdf", "x": 0, "y": 0, "width": 100}))
+            .unwrap()["id"]
+            .clone();
+        s.execute("object.layerOptions", &json!({"ids": [id], "hidden": ["Red"]})).unwrap();
+        let r = s.execute("file.package", &json!({"dir": dir.to_string_lossy(), "idml": true, "pdf": false})).unwrap();
+        let report = r["report"].as_str().unwrap();
+        assert!(report.contains("Placed PDF layers"), "{report}");
+        // The DesignCraft copy keeps the choice; only the linked IDML copy shows file defaults.
+        let packed = super::super::from_bytes(&std::fs::read(dir.join("LayeredPackage.designcraft")).unwrap()).unwrap();
+        let item = packed.item(designcraft_doc::ItemId(id.as_u64().unwrap())).unwrap();
+        assert_eq!(item.pdf_hidden_layers, vec!["Red".to_string()]);
+        assert!(item.has_pdf_layer_override());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     /// The package's IDML links its images to the files in the package's Links folder and embeds
     /// no copies of them.
     #[test]
@@ -520,14 +564,17 @@ mod tests {
                 std::io::Read::read_to_string(&mut f, &mut spreads).unwrap();
             }
         }
-        let linked = dir.join("Links").join("my photo.png");
-        let uri = format!("file:{}", linked.to_string_lossy().replace(' ', "%20"));
+        // Relative to the package: no path from the machine that made it (#340).
+        let uri = "file:Links/my%20photo.png";
+        let folder = dir.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(!spreads.contains(&folder), "the package's own folder is not written: {spreads}");
         assert!(spreads.contains(&format!(r#"LinkResourceURI="{uri}""#)), "{spreads}");
         assert!(!spreads.contains("<Contents") && !spreads.contains(r#"StoredState="Embedded""#), "no image is embedded");
         let back = designcraft_idml::import_idml_with(&idml, &|_| None).unwrap();
         let asset = back.assets.values().next().unwrap();
         assert!(asset.data.is_empty(), "no image is embedded");
-        assert_eq!(asset.link.as_deref(), linked.to_str());
+        assert_eq!(asset.link.as_deref(), Some("Links/my photo.png"));
+        assert!(dir.join("Links").join("my photo.png").exists());
     }
 
     /// A link whose file is gone has no bytes to copy: the package leaves it out of Links/, the
@@ -570,6 +617,29 @@ mod tests {
             assert_eq!(status(&mut opened, "gone.svg"), Some(json!("missing")), "{extension}");
             assert_eq!(status(&mut opened, "kept.svg"), Some(json!("ok")), "{extension}");
         }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A package holds no path from the machine that made it: the document and the IDML link the
+    /// copies in `Links/` by relative names, and they still open as linked after the move (#340).
+    #[test]
+    fn package_documents_hold_relative_links_only() {
+        let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("dc-package-relative-{}-{nonce}", std::process::id()));
+        let folder = dir.file_name().unwrap().to_string_lossy().into_owned();
+        let png = designcraft_render::Rendered { width: 4, height: 3, pixels: [30, 90, 180, 255].repeat(12) }.to_png();
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"title": "RelativePackage", "width": 72, "height": 72})).unwrap();
+        s.execute("file.place", &json!({"base64": super::super::base64_encode(&png), "name": "owned.png", "x": 5, "y": 5, "width": 16})).unwrap();
+        s.execute("file.package", &json!({"dir": dir.to_string_lossy(), "idml": true, "pdf": false})).unwrap();
+        let packed = super::super::from_bytes(&std::fs::read(dir.join("RelativePackage.designcraft")).unwrap()).unwrap();
+        let link = packed.assets.values().next().unwrap().link.clone().unwrap();
+        assert_eq!(link, "Links/owned.png");
+        assert!(!link.contains(&folder));
+        // Copy Link(s) To is unchanged: it relinks the open document by full path.
+        s.execute("links.copyTo", &json!({"dir": dir.join("Copies").to_string_lossy()})).unwrap();
+        let copied = s.doc().unwrap().doc.assets.values().next().unwrap().link.clone().unwrap();
+        assert!(std::path::Path::new(&copied).is_absolute(), "{copied}");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -871,13 +941,12 @@ mod tests {
         let outside = base.join("separate");
         std::fs::create_dir_all(&outside).unwrap();
         let redirected = base.join("Package");
-        match symlink_dir(&outside, &redirected) {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-                let _ = std::fs::remove_dir_all(&base);
-                return;
-            }
-            Err(e) => panic!("could not create directory redirect: {e}"),
+        // A symbolic link needs Developer Mode or elevation (os error 1314 without them); a
+        // directory junction needs neither, and `is_redirect` treats both as redirects.
+        if symlink_dir(&outside, &redirected).is_err() && !make_junction(&outside, &redirected) {
+            eprintln!("skipped: directory redirects can't be made here");
+            let _ = std::fs::remove_dir_all(&base);
+            return;
         }
         let mut s = Session::new();
         s.execute("file.new", &json!({"title": "Annual"})).unwrap();
@@ -885,5 +954,18 @@ mod tests {
         assert!(!outside.join("Annual.designcraft").exists());
         std::fs::remove_dir(&redirected).unwrap();
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Makes `link` a directory junction to `target` with `mklink /J`, and reports whether it was made.
+    #[cfg(windows)]
+    fn make_junction(target: &Path, link: &Path) -> bool {
+        use std::os::windows::process::CommandExt;
+
+        // Windows paths can't hold `"`, so quoting each one keeps `&` and spaces in it literal for cmd.
+        std::process::Command::new("cmd")
+            .args(["/D", "/C"])
+            .raw_arg(format!("mklink /J \"{}\" \"{}\"", link.display(), target.display()))
+            .output()
+            .is_ok_and(|output| output.status.success())
     }
 }

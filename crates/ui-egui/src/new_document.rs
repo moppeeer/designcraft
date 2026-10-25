@@ -278,11 +278,13 @@ pub(crate) fn end_stale_preview(app: &mut DesignApp) {
     }
 }
 
-/// Drop the views (one per pane) of a preview document that has gone.
+/// Drop the views and page histories (one per pane) of a preview document that has gone.
 fn forget_view(app: &mut DesignApp, uid: Option<u64>) {
     if let Some(uid) = uid.filter(|uid| app.session.documents().iter().all(|d| d.uid != *uid)) {
         app.views.remove(&uid);
         app.views.remove(&(uid ^ (1 << 63)));
+        app.page_history.remove(&uid);
+        app.page_history.remove(&(uid ^ (1 << 63)));
     }
 }
 
@@ -360,9 +362,8 @@ fn cards(app: &DesignApp, tab: &str) -> Vec<Card> {
     }
 }
 
-/// `210 × 297 mm`, `51p0 × 66p0`.
-fn size_text(nd: &NewDocument) -> String {
-    let u = nd.units;
+/// `210 × 297 mm`, `51p0 × 66p0`: the size of `nd` in the dialog's units `u`.
+fn size_text(nd: &NewDocument, u: Unit) -> String {
     let (w, h) = (format_measure(nd.width, u), format_measure(nd.height, u));
     let suffix = u.suffix();
     if suffix.starts_with(' ')
@@ -391,7 +392,7 @@ fn paint_page(p: &egui::Painter, area: Rect, nd: &NewDocument, custom: bool, col
     }
 }
 
-fn card(ui: &mut Ui, c: &Card, selected: bool) -> egui::Response {
+fn card(ui: &mut Ui, c: &Card, units: Unit, selected: bool) -> egui::Response {
     let t = Tokens::get(ui.ctx());
     let (r, resp) = ui.allocate_exact_size(CARD, Sense::click());
     if selected {
@@ -406,11 +407,11 @@ fn card(ui: &mut Ui, c: &Card, selected: bool) -> egui::Response {
         ui.painter(),
         pos2(r.center().x, r.top() + 132.0),
         Align2::CENTER_CENTER,
-        &size_text(&c.nd),
+        &size_text(&c.nd, units),
         FontId::proportional(11.0),
         t.text_dim,
     );
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, &c.label));
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, &c.label));
     resp
 }
 
@@ -456,7 +457,7 @@ fn tabs(app: &DesignApp, ui: &mut Ui, d: &mut Dialog) {
                     select(d, &c);
                 }
             }
-            resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, on, text));
+            resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, text));
         }
         ui.min_rect()
     });
@@ -494,13 +495,14 @@ fn presets(app: &mut DesignApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     });
     ui.add_space(10.0);
     let current = d.s("preset");
+    let card_units = units(d);
     let mut create = false;
     let mut delete = None;
     let layout = if rtl { Layout::right_to_left(Align::TOP) } else { Layout::left_to_right(Align::TOP) }.with_main_wrap(true);
     ui.with_layout(layout, |ui| {
         ui.spacing_mut().item_spacing = vec2(10.0, 10.0);
         for c in &list {
-            let resp = card(ui, c, current == c.key);
+            let resp = card(ui, c, card_units, current == c.key);
             if resp.clicked() || resp.double_clicked() {
                 select(d, c);
             }
@@ -567,7 +569,7 @@ fn spin(ui: &mut Ui, d: &mut Dialog, key: &str, width: f32, step: Step) -> bool 
     for (dir, half) in
         [(1.0, Rect::from_min_max(seg.min, pos2(seg.max.x, seg.center().y))), (-1.0, Rect::from_min_max(pos2(seg.min.x, seg.center().y), seg.max))]
     {
-        let resp = ui.interact(half, ui.id().with((key, dir < 0.0)), Sense::click());
+        let resp = ui.interact(half, ui.scope_id().with((key, dir < 0.0)), Sense::click());
         if resp.hovered() {
             ui.painter().rect_filled(half.shrink(1.0), 1.0, t.hover);
         }
@@ -587,11 +589,10 @@ fn spin(ui: &mut Ui, d: &mut Dialog, key: &str, width: f32, step: Step) -> bool 
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(text_rect).layout(Layout::left_to_right(Align::Center)));
     let resp = child.add(
         egui::TextEdit::singleline(&mut s)
-            .id(ui.id().with((key, "text")))
+            .id(ui.scope_id().with((key, "text")))
             .frame(egui::Frame::NONE)
             .desired_width(text_rect.width())
-            .horizontal_align(Align::Min)
-            .vertical_align(Align::Center),
+            .align(egui::Align2::LEFT_CENTER),
     );
     if resp.changed() {
         d.fields.insert(key.into(), Value::String(s));
@@ -734,19 +735,19 @@ fn details(app: &mut DesignApp, ui: &mut Ui, d: &mut Dialog) {
         let mut name = d.s("name");
         let hint = app.session.next_untitled_title();
         let resp = ui.add(egui::TextEdit::singleline(&mut name).hint_text(hint).desired_width(2.0 * COLUMN_W - 10.0).font(semibold(13.0)));
-        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, tr("Document Name")));
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, tr("Document Name")));
         if resp.changed() {
             d.fields.insert("name".into(), json!(name));
         }
         let save = crate::widgets::icon_toggle_sized(ui, "preset-save", false, tr("Save Document Preset"), vec2(30.0, 26.0));
-        save.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tr("Save Document Preset")));
+        save.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tr("Save Document Preset")));
         // It holds a text field: clicks inside it don't close it.
         egui::Popup::menu(&save).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
             ui.set_min_width(220.0);
             crate::rtl::label(ui, tr("Save Document Preset As:"));
             let mut preset = d.s("presetName");
             let field = ui.add(egui::TextEdit::singleline(&mut preset).hint_text(tr("Custom")).desired_width(200.0));
-            field.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, tr("Preset Name")));
+            field.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, tr("Preset Name")));
             // Type the name as soon as the popup opens.
             if save.clicked() {
                 field.request_focus();
@@ -957,6 +958,7 @@ mod tests {
             delta: vec2(0.0, -400.0),
             phase: egui::TouchPhase::Move,
             modifiers: egui::Modifiers::NONE,
+            source: egui::MouseWheelSource::Unknown,
         };
         frame(&mut app, &ctx, vec![wheel]);
         let texts = settle(&mut app, &ctx);
@@ -1029,6 +1031,13 @@ mod tests {
         let doc = &app.session.active().unwrap().doc;
         assert_eq!((doc.settings.page_width, doc.settings.intent), (1366.0, Intent::Web));
         assert!(!doc.settings.facing_pages);
+    }
+
+    #[test]
+    fn card_sizes_follow_the_dialog_units() {
+        let card = NewDocument::from_preset("Business Card").unwrap();
+        assert_eq!(size_text(&card, Unit::Millimeters), "88.9 × 50.8 mm");
+        assert_ne!(size_text(&card, Unit::Millimeters), size_text(&card, Unit::Picas));
     }
 
     #[test]

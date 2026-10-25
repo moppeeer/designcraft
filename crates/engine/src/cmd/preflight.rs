@@ -116,6 +116,7 @@ fn overset_location(s: &Session, target: designcraft_doc::ItemId) -> Option<(des
 pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
     let Some(st) = s.active() else { return vec![] };
     let d = &st.doc;
+    let document = st.path.as_deref().map(std::path::Path::new);
     let mut out = Vec::new();
     // Stories: overset and fonts.
     let mut missing_fonts: Vec<String> = Vec::new();
@@ -248,13 +249,27 @@ pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
             let xf = parent * it.xf;
             pending.extend(it.children().iter().rev().map(|child| (child.as_ref(), xf)));
             let page = page_of(d, SpreadRef::Doc(si), it, parent);
+            if let Content::Graphic(g) = &it.content
+                && g.layer_options.as_ref().is_some_and(designcraft_doc::GraphicLayerOptions::has_visibility_overrides)
+            {
+                out.push(Issue {
+                    severity: "warning",
+                    kind: "unsupportedGraphicLayers",
+                    message: designcraft_doc::GRAPHIC_LAYER_RENDERING_WARNING.into(),
+                    item: Some(it.id.0),
+                    page,
+                });
+            }
             match &it.content {
                 Content::Graphic(g) => match d.assets.get(&g.asset) {
                     None => out.push(Issue { severity: "error", kind: "missingLink", message: "Missing graphic".into(), item: Some(it.id.0), page }),
-                    Some(a) if a.data.is_empty() || super::links::link_missing(a) => out.push(Issue {
+                    Some(a) if a.data.is_empty() || super::links::link_missing(a, document) => out.push(Issue {
                         severity: "error",
                         kind: "missingLink",
-                        message: format!("Missing link: {}", a.link.as_deref().unwrap_or(&a.name)),
+                        message: match a.link.as_deref().and_then(|l| super::links::refused(l, document)) {
+                            Some(why) => format!("Missing link: {} ({why})", a.link.as_deref().unwrap_or(&a.name)),
+                            None => format!("Missing link: {}", a.link.as_deref().unwrap_or(&a.name)),
+                        },
                         item: Some(it.id.0),
                         page,
                     }),
@@ -303,6 +318,17 @@ pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
             }
         }
     }
+    // Nested graphic cells and anchored/parent items may not have a page frame
+    // in the walk above. Keep the warning visible after a native save/reopen.
+    if d.has_unwalked_graphic_layer_visibility_overrides() {
+        out.push(Issue {
+            severity: "warning",
+            kind: "unsupportedGraphicLayers",
+            message: designcraft_doc::GRAPHIC_LAYER_RENDERING_WARNING.into(),
+            item: None,
+            page: None,
+        });
+    }
     out
 }
 
@@ -350,11 +376,16 @@ mod placed_vector_tests {
         s.execute("file.place", &json!({"base64": base64_encode(&png), "name": "photo.jpg", "x": 72, "y": 72, "width": 20})).unwrap();
         let doc = std::sync::Arc::make_mut(&mut s.doc_mut().unwrap().doc);
         let asset = doc.assets.values_mut().next().unwrap();
-        std::sync::Arc::make_mut(asset).link = Some("/definitely/missing dir/photo.jpg".into());
+        // On Windows, `/x` names no drive, so `document_path` refuses it when the document has no path. `TMPDIR` can be
+        // relative on macOS and Linux, so the temporary folder is made absolute.
+        let temp = std::path::absolute(std::env::temp_dir()).unwrap();
+        let link = temp.join(format!("dc-preflight-missing-{} dir", std::process::id())).join("photo.jpg");
+        let link = link.to_string_lossy().into_owned();
+        std::sync::Arc::make_mut(asset).link = Some(link.clone());
         let r = s.execute("preflight.run", &json!({})).unwrap();
         let missing: Vec<&str> =
             r["issues"].as_array().unwrap().iter().filter(|i| i["kind"] == "missingLink").map(|i| i["message"].as_str().unwrap()).collect();
-        assert_eq!(missing, ["Missing link: /definitely/missing dir/photo.jpg"]);
+        assert_eq!(missing, [format!("Missing link: {link}")]);
     }
 }
 
