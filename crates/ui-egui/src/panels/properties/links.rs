@@ -377,7 +377,7 @@ pub fn preflight_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
                     if let Some(p) = i.page.filter(|_| app.session.active().is_some()) {
                         let label = app.session.page_label(p);
                         let pr = Rect::from_min_max(pos2(r.right() - page_col, r.min.y), r.max);
-                        let presp = ui.interact(pr, ui.id().with(("preflight_page", k)), Sense::click());
+                        let presp = ui.interact(pr, ui.scope_id().with(("preflight_page", k)), Sense::click());
                         presp.widget_info(|| {
                             egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("{} {label}", crate::i18n::tr(&lang, "Page")))
                         });
