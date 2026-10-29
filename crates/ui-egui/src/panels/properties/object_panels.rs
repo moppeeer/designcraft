@@ -459,7 +459,7 @@ fn fx_menu_button(ui: &mut egui::Ui, tip: &str) -> egui::Response {
     let tri = vec![pos2(r.max.x - 11.0, c - 1.5), pos2(r.max.x - 4.0, c - 1.5), pos2(r.max.x - 7.5, c + 2.5)];
     ui.painter().add(egui::Shape::convex_polygon(tri, t.icon, Stroke::NONE));
     let enabled = ui.is_enabled();
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, "fx"));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, "fx"));
     resp.on_hover_ui(|ui| {
         crate::rtl::label(ui, tip);
     })
