@@ -4564,16 +4564,20 @@ fn para_measure(ui: &mut egui::Ui, d: &mut Dialog, pv: &Value, key: &str, unit: 
 }
 
 /// A paragraph attribute chosen from `opts` (serialized value, label).
-fn para_choice(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Value, key: &str, opts: &[(&str, &str)]) {
+fn para_choice(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Value, key: &str, opts: &[(&str, &str)]) -> egui::Response {
     let cur = para_value(d, pv, key);
     let shown = opts.iter().find(|o| cur == o.0).map_or("", |o| crate::i18n::tr(lang, o.1));
-    craft_ui::ComboBox::from_id_salt(("pschoice", key)).selected_text(crate::rtl::widget(ui, shown)).width(200.0).show_ui(ui, |ui| {
-        for (v, label) in opts {
-            if ui.selectable_label(cur == *v, crate::rtl::widget(ui, crate::i18n::tr(lang, label))).clicked() {
-                para_set(d, key, json!(v));
+    craft_ui::ComboBox::from_id_salt(("pschoice", key))
+        .selected_text(crate::rtl::widget(ui, shown))
+        .width(200.0)
+        .show_ui(ui, |ui| {
+            for (v, label) in opts {
+                if ui.selectable_label(cur == *v, crate::rtl::widget(ui, crate::i18n::tr(lang, label))).clicked() {
+                    para_set(d, key, json!(v));
+                }
             }
-        }
-    });
+        })
+        .response
 }
 
 /// Four per-side values in the order the attribute holds them: top, left, bottom, right. An
@@ -5224,11 +5228,11 @@ const LIST_SPECIALS: [(&str, &str); 6] =
 /// for the whole of Text After (the Number has none: it would lose its `^#`), ▸ adds a special
 /// character to it.
 fn list_text(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Value, label: &str, key: &str) {
-    crate::rtl::label(ui, crate::i18n::tr(lang, label));
+    let name = crate::rtl::label(ui, crate::i18n::tr(lang, label));
     let mut s = para_value(d, pv, key).as_str().unwrap_or("").replace('\t', "^t");
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
-        if ui.add(egui::TextEdit::singleline(&mut s).desired_width(160.0)).changed() {
+        if ui.add(egui::TextEdit::singleline(&mut s).desired_width(160.0)).labelled_by(name.id).changed() {
             para_set(d, key, json!(s));
         }
         if key == "listSeparator" {
@@ -5276,7 +5280,7 @@ impl ListUi<'_> {
 }
 
 /// A character style for a bullet or number (`key`), [None] first.
-fn list_char_style(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Value, key: &str, styles: &[String]) {
+fn list_char_style(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Value, key: &str, styles: &[String]) -> egui::Response {
     let cur = para_value(d, pv, key).as_str().unwrap_or(designcraft_doc::NO_CHAR_STYLE).to_string();
     craft_ui::ComboBox::from_id_salt(("pslistcs", key))
         .selected_text(crate::rtl::widget(ui, crate::i18n::style_name(lang, &cur)))
@@ -5289,7 +5293,8 @@ fn list_char_style(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Value, ke
                     para_set(d, key, json!(n));
                 }
             }
-        });
+        })
+        .response
 }
 
 /// InDesign's bullet characters, as its Bullet Character grid starts (bullet, asterisk, lozenge,
@@ -5451,24 +5456,28 @@ fn add_bullets(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, lu: &ListUi<'_>) {
                 d.fields.insert("addBulletChar".into(), json!(c.to_string()));
             }
             egui::Grid::new("add_bullets_fields").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
-                crate::rtl::label(ui, crate::i18n::tr(lang, "Font Family:"));
-                egui::ComboBox::from_id_salt("addbulletfont").selected_text(family.as_str()).width(220.0).show_ui(ui, |ui| {
+                let name = crate::rtl::label(ui, crate::i18n::tr(lang, "Font Family:"));
+                craft_ui::ComboBox::from_id_salt("addbulletfont").selected_text(family.as_str()).width(220.0).show_ui(ui, |ui| {
                     for f in lu.families {
                         if ui.selectable_label(*f == family, f).clicked() {
                             d.fields.insert("addBulletFont".into(), json!(f));
                             d.fields.insert("addBulletStyle".into(), json!(lu.fonts.styles(f).into_iter().next().unwrap_or_default()));
                         }
                     }
-                });
+                })
+                .response
+                .labelled_by(name.id);
                 ui.end_row();
-                crate::rtl::label(ui, crate::i18n::tr(lang, "Font Style:"));
-                egui::ComboBox::from_id_salt("addbulletstyle").selected_text(style.as_str()).width(220.0).show_ui(ui, |ui| {
+                let name = crate::rtl::label(ui, crate::i18n::tr(lang, "Font Style:"));
+                craft_ui::ComboBox::from_id_salt("addbulletstyle").selected_text(style.as_str()).width(220.0).show_ui(ui, |ui| {
                     for st in lu.fonts.styles(&family) {
                         if ui.selectable_label(st == style, &st).clicked() {
                             d.fields.insert("addBulletStyle".into(), json!(st));
                         }
                     }
-                });
+                })
+                .response
+                .labelled_by(name.id);
                 ui.end_row();
             });
             let mut remember = d.fields.get("addBulletRemember").and_then(Value::as_bool).unwrap_or(true);
@@ -5546,21 +5555,26 @@ fn bullets_and_numbering(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Val
     egui::ScrollArea::vertical().id_salt("psbnscroll").max_height(400.0).show(ui, |ui| {
         // List Type; then List (numbered lists) and Level on one row, as InDesign's.
         egui::Grid::new("psbn").num_columns(4).spacing([8.0, 6.0]).show(ui, |ui| {
-            crate::rtl::label(ui, crate::i18n::tr(lang, "List Type:"));
-            para_choice(lang, ui, d, pv, "listType", &[("none", "None"), ("bullets", "Bullets"), ("numbers", "Numbers")]);
+            let name = crate::rtl::label(ui, crate::i18n::tr(lang, "List Type:"));
+            para_choice(lang, ui, d, pv, "listType", &[("none", "None"), ("bullets", "Bullets"), ("numbers", "Numbers")]).labelled_by(name.id);
             ui.end_row();
-            ui.add_enabled_ui(kind == "numbers", |ui| crate::rtl::label(ui, crate::i18n::tr(lang, "List:")));
+            let list_name = ui.add_enabled_ui(kind == "numbers", |ui| crate::rtl::label(ui, crate::i18n::tr(lang, "List:"))).inner;
             ui.add_enabled_ui(kind == "numbers", |ui| {
                 let list = para_value(d, pv, "listName").as_str().unwrap_or("").to_string();
                 // "" is the story's own list.
                 let name = |n: &str| if n.is_empty() { crate::i18n::tr(lang, "[Default]").to_string() } else { n.to_string() };
-                egui::ComboBox::from_id_salt("pslist").selected_text(name(&list)).width(200.0).show_ui(ui, |ui| {
-                    for n in std::iter::once("").chain(doc.settings.lists.iter().map(|l| l.name.as_str())) {
-                        if ui.selectable_label(n == list, name(n)).clicked() {
-                            para_set(d, "listName", json!(n));
+                craft_ui::ComboBox::from_id_salt("pslist")
+                    .selected_text(name(&list))
+                    .width(200.0)
+                    .show_ui(ui, |ui| {
+                        for n in std::iter::once("").chain(doc.settings.lists.iter().map(|l| l.name.as_str())) {
+                            if ui.selectable_label(n == list, name(n)).clicked() {
+                                para_set(d, "listName", json!(n));
+                            }
                         }
-                    }
-                });
+                    })
+                    .response
+                    .labelled_by(list_name.id);
             });
             ui.add_enabled_ui(kind != "none", |ui| crate::rtl::label(ui, crate::i18n::tr(lang, "Level:")));
             ui.add_enabled_ui(kind != "none", |ui| para_count(ui, d, pv, "listLevel", (1, designcraft_doc::LIST_LEVELS as u32)));
@@ -5572,8 +5586,8 @@ fn bullets_and_numbering(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Val
                 ui.add_space(6.0);
                 egui::Grid::new("psbnbullet").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
                     list_text(lang, ui, d, pv, "Text After:", "listSeparator");
-                    crate::rtl::label(ui, crate::i18n::tr(lang, "Character Style:"));
-                    list_char_style(lang, ui, d, pv, "bulletCharStyle", lu.char_styles);
+                    let name = crate::rtl::label(ui, crate::i18n::tr(lang, "Character Style:"));
+                    list_char_style(lang, ui, d, pv, "bulletCharStyle", lu.char_styles).labelled_by(name.id);
                     ui.end_row();
                 });
             }),
@@ -5637,9 +5651,9 @@ fn bullets_and_numbering(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Val
         if kind != "none" {
             titled_group(ui, crate::i18n::tr(lang, "Bullet or Number Position"), |ui| {
                 egui::Grid::new("psbnposition").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
-                    crate::rtl::label(ui, crate::i18n::tr(lang, "Alignment:"));
+                    let name = crate::rtl::label(ui, crate::i18n::tr(lang, "Alignment:"));
                     let key = if kind == "bullets" { "bulletAlign" } else { "numberAlign" };
-                    para_choice(lang, ui, d, pv, key, &[("left", "Left"), ("center", "Center"), ("right", "Right")]);
+                    para_choice(lang, ui, d, pv, key, &[("left", "Left"), ("center", "Center"), ("right", "Right")]).labelled_by(name.id);
                     ui.end_row();
                     for (label, key) in [("Left Indent:", "leftIndent"), ("First Line Indent:", "firstLineIndent")] {
                         crate::rtl::label(ui, crate::i18n::tr(lang, label));
@@ -5647,11 +5661,11 @@ fn bullets_and_numbering(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Val
                         ui.end_row();
                     }
                     // Tab Position: none, or a stop for the text after the label.
-                    crate::rtl::label(ui, crate::i18n::tr(lang, "Tab Position:"));
+                    let name = crate::rtl::label(ui, crate::i18n::tr(lang, "Tab Position:"));
                     ui.horizontal(|ui| {
                         let tab = para_value(d, pv, "listTab").as_f64();
                         let mut on = tab.is_some();
-                        if ui.checkbox(&mut on, "").changed() {
+                        if ui.checkbox(&mut on, "").labelled_by(name.id).changed() {
                             let left = para_value(d, pv, "leftIndent").as_f64().filter(|v| v.is_finite() && *v > 0.0).unwrap_or(18.0);
                             para_set(d, "listTab", if on { json!(left) } else { Value::Null });
                         }
