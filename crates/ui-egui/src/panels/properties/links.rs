@@ -1,8 +1,8 @@
 use super::{DesignApp, Sense, Tokens, Value, divider, json, sel_info, units, vec2};
-use egui::{Rect, Stroke, pos2};
 use crate::app::file_dialogs::Bound;
 use crate::icons;
 use crate::widgets::{self, icon_toggle};
+use egui::{Rect, Stroke, pos2};
 
 /// Links: status (missing / modified / embedded), page and effective resolution of every placed
 /// graphic and linked text file; Relink, Go To Link, Update Link, Embed Link for the chosen row.
@@ -179,8 +179,7 @@ pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     ui.painter().line_segment([bar.left_top(), bar.right_top()], Stroke::new(1.0, t.section_divider));
     let count = crate::i18n::tr(&lang, "{count} Selected").replace("{count}", &usize::from(chosen.is_some()).to_string());
     let count_r = Rect::from_min_max(bar.min, pos2(bar.min.x + 90.0, bar.max.y));
-    ui.interact(count_r, ui.id().with("links_count"), Sense::hover())
-        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &count));
+    ui.interact(count_r, ui.id().with("links_count"), Sense::hover()).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &count));
     ui.painter().text(bar.left_center() + vec2(6.0, 0.0), egui::Align2::LEFT_CENTER, &count, egui::FontId::proportional(11.5), t.text_dim);
     let mut action = None;
     let mut more = None;
@@ -250,9 +249,9 @@ pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
             let asked = app.ask_open("relink", Bound::Document, |app, path| {
                 let Some(dir) = std::path::Path::new(&path).parent() else { return Ok(Value::Null) };
                 if let Ok(v) = app.run("links.relinkFolder", json!({"dir": dir.to_string_lossy()})) {
-                        let n = v["relinked"].as_u64().unwrap_or(0);
-                        let message = crate::i18n::tr(&app.ui.language, "Searched this relink directory, and found and relinked {count} missing links.");
-                        app.status(message.replace("{count}", &n.to_string()));
+                    let n = v["relinked"].as_u64().unwrap_or(0);
+                    let message = crate::i18n::tr(&app.ui.language, "Searched this relink directory, and found and relinked {count} missing links.");
+                    app.status(message.replace("{count}", &n.to_string()));
                 }
                 Ok(Value::Null)
             });
