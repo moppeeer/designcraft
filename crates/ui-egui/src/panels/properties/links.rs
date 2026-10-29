@@ -130,7 +130,7 @@ pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
             _ => None,
         };
         if let Some(sl) = status_label {
-            let sr = ui.interact(status_r, ui.id().with(("link_status", id)), Sense::hover());
+            let sr = ui.interact(status_r, ui.scope_id().with(("link_status", id)), Sense::hover());
             sr.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, crate::i18n::tr(&lang, sl)));
             paint_link_status(ui.painter(), status_r, status, &t);
             let why = r["refused"].as_str().map(str::to_owned);
@@ -144,7 +144,7 @@ pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
         if let Some(u) = uses.first() {
             let page = u["page"].as_str().unwrap_or("PB").to_string();
             let pr = Rect::from_min_max(pos2(row.right() - page_col, row.min.y), row.max);
-            let presp = ui.interact(pr, ui.id().with(("link_page", id)), Sense::click());
+            let presp = ui.interact(pr, ui.scope_id().with(("link_page", id)), Sense::click());
             let col = egui::Color32::from_rgb(0xe8, 0xa0, 0x3a);
             let g = ui.painter().layout_no_wrap(page.clone(), egui::FontId::proportional(11.5), col);
             let at = pos2(pr.center().x - g.size().x / 2.0, pr.center().y - g.size().y / 2.0);
@@ -179,7 +179,8 @@ pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     ui.painter().line_segment([bar.left_top(), bar.right_top()], Stroke::new(1.0, t.section_divider));
     let count = crate::i18n::tr(&lang, "{count} Selected").replace("{count}", &usize::from(chosen.is_some()).to_string());
     let count_r = Rect::from_min_max(bar.min, pos2(bar.min.x + 90.0, bar.max.y));
-    ui.interact(count_r, ui.id().with("links_count"), Sense::hover()).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &count));
+    ui.interact(count_r, ui.scope_id().with("links_count"), Sense::hover())
+        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &count));
     ui.painter().text(bar.left_center() + vec2(6.0, 0.0), egui::Align2::LEFT_CENTER, &count, egui::FontId::proportional(11.5), t.text_dim);
     let mut action = None;
     let mut more = None;
