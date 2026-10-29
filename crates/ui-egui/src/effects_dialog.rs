@@ -588,7 +588,7 @@ fn color_chip(app: &DesignApp, ui: &mut egui::Ui, d: &mut Dialog, path: &[&str],
 /// Softer or Precise, for a glow.
 fn technique(ui: &mut egui::Ui, d: &mut Dialog, key: &str, tr: &dyn Fn(&str) -> String) {
     let cur = d.fields.get("fx").and_then(|f| f[key]["technique"].as_str()).unwrap_or("softer").to_string();
-    egui::ComboBox::from_id_salt(("fx_technique", key.to_string()))
+    craft_ui::ComboBox::from_id_salt(("fx_technique", key.to_string()))
         .selected_text(tr(if cur == "precise" { "Precise" } else { "Softer" }))
         .width(130.0)
         .show_ui(ui, |ui| {
@@ -674,7 +674,7 @@ fn shadow_or_glow(app: &DesignApp, ui: &mut egui::Ui, d: &mut Dialog, key: &str,
                     cell(ui, &tr("Source:"), c.left, c.fields, |ui| {
                         let mut center = d.fields.get("fx").is_some_and(|f| f["innerGlow"]["center"].as_bool().unwrap_or(false));
                         let label = |c: bool| tr(if c { "Center" } else { "Edge" });
-                        egui::ComboBox::from_id_salt("fx_source").selected_text(label(center)).width(130.0).show_ui(ui, |ui| {
+                        craft_ui::ComboBox::from_id_salt("fx_source").selected_text(label(center)).width(130.0).show_ui(ui, |ui| {
                             for c in [false, true] {
                                 if ui.selectable_value(&mut center, c, label(c)).clicked() {
                                     set(d, &["innerGlow", "center"], json!(c));
@@ -706,7 +706,7 @@ fn mode_combo(ui: &mut egui::Ui, d: &mut Dialog, key: &str, tr: &dyn Fn(&str) ->
     let name = |m: &designcraft_color::BlendMode| serde_json::to_value(m).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
     let shown = designcraft_color::BlendMode::ALL.iter().find(|m| name(m) == cur).map_or(fallback, |m| m.label());
     let mut picked = None;
-    egui::ComboBox::from_id_salt(("fx_mode", key.to_string())).selected_text(tr(shown)).width(140.0).show_ui(ui, |ui| {
+    craft_ui::ComboBox::from_id_salt(("fx_mode", key.to_string())).selected_text(tr(shown)).width(140.0).show_ui(ui, |ui| {
         for m in designcraft_color::BlendMode::ALL {
             if ui.selectable_label(name(&m) == cur, tr(m.label())).clicked() {
                 picked = Some(name(&m));
