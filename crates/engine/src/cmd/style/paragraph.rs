@@ -755,7 +755,7 @@ fn group_name(cmd: &str, name: &str) -> Result<String> {
     Ok(n)
 }
 
-fn create_group(s: &mut Session, p: &Value) -> Result<Value> {
+pub(super) fn create_group(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "style.group.create";
     let para = group_kind(CMD, p)?;
     let requested = str_param(p, "name").map(|n| group_name(CMD, n)).transpose()?;
@@ -776,7 +776,7 @@ fn create_group(s: &mut Session, p: &Value) -> Result<Value> {
     })
 }
 
-fn rename_group(s: &mut Session, p: &Value) -> Result<Value> {
+pub(super) fn rename_group(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "style.group.rename";
     let para = group_kind(CMD, p)?;
     let name = group_name(CMD, str_param(p, "name").ok_or_else(|| bad(CMD, "missing name"))?)?;
