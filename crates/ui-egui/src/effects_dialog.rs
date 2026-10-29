@@ -565,7 +565,7 @@ fn color_chip(app: &DesignApp, ui: &mut egui::Ui, d: &mut Dialog, path: &[&str],
     let (c, g) = chip(&cur);
     let resp = crate::widgets::swatch_chip(ui, crate::widgets::FIELD_H, c, g).on_hover_text(&cur);
     let label = tr("Color:").trim_end_matches([':', ' ']).to_string();
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &label));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
     let names: Vec<String> =
         doc.map_or_else(Vec::new, |doc| doc.swatches.iter().filter(|w| !w.hidden || w.name == cur).map(|w| w.name.clone()).collect());
     egui::Popup::menu(&resp).show(|ui| {
