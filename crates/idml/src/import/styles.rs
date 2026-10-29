@@ -1,3 +1,6 @@
+use designcraft_geom::corners::CornerOptions;
+
+use super::object_style::{corners, corners_in};
 use super::table::uniform_cell_stroke;
 use super::values::tint;
 use super::{
