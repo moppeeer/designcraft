@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use designcraft_geom::corners::CornerOptions;
 
 use super::object_style::{corners, corners_in};
