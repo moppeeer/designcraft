@@ -159,6 +159,15 @@ pub(super) fn create_object(s: &mut Session, p: &Value) -> Result<Value> {
     })
 }
 
+/// A true/false parameter, when given.
+fn bool_param(cmd: &str, p: &Value, key: &str) -> Result<Option<bool>> {
+    match p.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(b)) => Ok(Some(*b)),
+        Some(_) => Err(bad(cmd, format!("`{key}` must be true or false"))),
+    }
+}
+
 /// `p.stroke` merged over `base` (as [`group_param`]), refused when the weight isn't a number ≥ 0
 /// or the tint isn't 0–1.
 fn stroke_param(cmd: &str, p: &Value, base: Option<&designcraft_doc::Stroke>) -> Result<Option<Option<designcraft_doc::Stroke>>> {
