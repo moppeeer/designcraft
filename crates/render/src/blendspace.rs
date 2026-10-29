@@ -87,6 +87,7 @@ fn same_document(old: &Document, new: &Document) -> bool {
         styles,
         assets,
         title,
+        file_info,
         settings,
         layers,
         swatches,
@@ -128,6 +129,7 @@ fn same_document(old: &Document, new: &Document) -> bool {
         && old.alpha_outlines.len() == alpha_outlines.len()
         && old.alpha_outlines.iter().zip(alpha_outlines).all(|(a, b)| std::sync::Arc::ptr_eq(a, b))
         && old.title == *title
+        && old.file_info == *file_info
         && old.settings == *settings
         && old.layers == *layers
         && old.swatches == *swatches
@@ -447,8 +449,7 @@ mod tests {
             doc,
             &Cache::new(),
             &[Placed { spread: SpreadRef::Doc(0), xf: Affine::IDENTITY }],
-            200,
-            140,
+            (200, 140),
             Affine::translate((30.0, 10.0)),
             &RenderOptions { blend_space_view: true, background: Some([180, 180, 180, 255]), ..Default::default() },
         )
@@ -590,8 +591,7 @@ mod tests {
             &doc,
             &Cache::new(),
             &[Placed { spread: SpreadRef::Doc(0), xf: Affine::IDENTITY }],
-            200,
-            140,
+            (200, 140),
             Affine::translate((30.0, 10.0)),
             &cyan,
         );
@@ -650,10 +650,11 @@ mod tests {
         renderer.threads = 0;
         let placements = [Placed { spread: SpreadRef::Doc(0), xf: Affine::IDENTITY }];
         let options = RenderOptions { paper: false, blend_space_view: true, ..Default::default() };
-        let out = renderer.render(&doc, &Cache::new(), &placements, 160, 120, Affine::IDENTITY, &options);
+        let out = renderer.render(&doc, &Cache::new(), &placements, (160, 120), Affine::IDENTITY, &options);
         assert!(out.pixel(30, 40)[3].abs_diff(64) <= 1, "half-opacity object inside a half-opacity group is quarter opaque");
-        let cmy = renderer.render(&doc, &Cache::new(), &placements, 160, 120, Affine::IDENTITY, &RenderOptions { plate: Some(4), ..options.clone() });
-        let k = renderer.render(&doc, &Cache::new(), &placements, 160, 120, Affine::IDENTITY, &RenderOptions { plate: Some(3), ..options });
+        let cmy =
+            renderer.render(&doc, &Cache::new(), &placements, (160, 120), Affine::IDENTITY, &RenderOptions { plate: Some(4), ..options.clone() });
+        let k = renderer.render(&doc, &Cache::new(), &placements, (160, 120), Affine::IDENTITY, &RenderOptions { plate: Some(3), ..options });
         for ((out, cmy), k) in out.pixels.as_chunks::<4>().0.iter().zip(cmy.pixels.as_chunks::<4>().0).zip(k.pixels.as_chunks::<4>().0) {
             assert_eq!(cmy[3], k[3], "all ink passes have the same coverage");
             assert_eq!(out[3], cmy[3], "conversion preserves coverage");
