@@ -212,7 +212,12 @@ pub(super) fn link_statuses(app: &mut DesignApp, ctx: &egui::Context, doc: &Docu
 /// edge, near the left corner, in its layer's colour, as InDesign marks placed files. A modified
 /// link shows a warning and a missing one a stop instead, as in the Links panel. Returns each
 /// badge's screen centre, kind and colour.
-pub(super) fn link_badges(doc: &Document, layout: &CanvasLayout, xf: &Xf, status: &std::collections::HashMap<u64, String>) -> Vec<(Pos2, LinkBadge, Color32)> {
+pub(super) fn link_badges(
+    doc: &Document,
+    layout: &CanvasLayout,
+    xf: &Xf,
+    status: &std::collections::HashMap<u64, String>,
+) -> Vec<(Pos2, LinkBadge, Color32)> {
     fn walk(
         doc: &Document,
         xf: &Xf,
