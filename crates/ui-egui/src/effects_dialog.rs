@@ -629,7 +629,9 @@ fn shadow_or_glow(app: &DesignApp, ui: &mut egui::Ui, d: &mut Dialog, key: &str,
                 cell(ui, &tr("X Offset:"), c.right, 0.0, |ui| offset(ui, d, key, unit, global, false));
             });
             ui.horizontal(|ui| {
-                cell(ui, &tr("Angle:"), c.left, c.fields, |ui| angle(ui, d, &[key, "angle"], !gl, global));
+                cell(ui, &tr("Angle:"), c.left, c.fields, |ui| {
+                    angle(ui, d, &[key, "angle"], !gl, global);
+                });
                 cell(ui, &tr("Y Offset:"), c.right, 0.0, |ui| offset(ui, d, key, unit, global, true));
             });
             ui.horizontal(|ui| {
