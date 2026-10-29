@@ -1,3 +1,5 @@
+use designcraft_doc::Document;
+
 #[cfg(not(target_arch = "wasm32"))]
 use super::EngineError;
 #[cfg(test)]
@@ -7,6 +9,7 @@ use super::{
     Affine, Arc, Asset, AssetId, Content, Graphic, Item, ItemId, PdfCrop, Rect, Result, Selection, Session, Shape, Value, bad, json, ok, shapes,
     str_param,
 };
+use crate::cmd::f64_or;
 
 pub(super) fn file_place(s: &mut Session, p: &Value) -> Result<Value> {
     // The file's size and time before it is read (a linked text file remembers them).
