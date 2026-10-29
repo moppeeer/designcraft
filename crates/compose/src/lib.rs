@@ -1553,7 +1553,10 @@ struct LineFitInput<'a> {
     split_limits: &'a mut Rc<Vec<(SplitKey, f64)>>,
     split_runs: &'a mut usize,
     split_budget: usize,
-    balance_runs: usize,
+    trial: &'a mut Option<Trial>,
+    limits: &'a mut Rc<Vec<(BandKey, f64)>>,
+    balance_runs: &'a mut usize,
+    balance_budget: usize,
     hyph_relays: &'a mut usize,
     restores: &'a mut usize,
     paragraph_count: usize,
@@ -1600,7 +1603,10 @@ fn fit_line(input: LineFitInput<'_>) -> LineFit {
         split_limits,
         split_runs,
         split_budget,
+        trial,
+        limits,
         balance_runs,
+        balance_budget,
         restores,
         paragraph_count,
         info,
@@ -1677,9 +1683,20 @@ fn fit_line(input: LineFitInput<'_>) -> LineFit {
             remaining: remaining_lines,
             here: (cur.fi, cur.col),
         };
-        if *restores < (4 * paragraph_count + 64) * (balance_runs + 1)
-            && let Some(action) = keep_violation(&ctx, pp, info, force_col, line_cap)
+        let action =
+            if *restores < (4 * paragraph_count + 64) * (*balance_runs + 1) { keep_violation(&ctx, pp, info, force_col, line_cap) } else { None };
+        // Columns a balancing trial shortened break keep options the band would keep with more
+        // room: the trial fails and the band is laid out again lower, before keep options move
+        // paragraphs on.
+        if action.is_some()
+            && trial.as_ref().is_some_and(|t| t.key == cur.band_key())
+            && let Some(j) = trial_failed(trial, limits, *balance_runs < balance_budget)
         {
+            *balance_runs += 1;
+            rewind(j, snaps, note_snaps, notes, out, cur, list_counter, force_col, line_cap, no_hyph);
+            return LineFit::Restart(j);
+        }
+        if let Some(action) = action {
             let j = match action {
                 KeepAction::Force(j) => {
                     force_col[j] = true;
@@ -2007,7 +2024,10 @@ fn place_paragraph_lines(shared: PlacementShared<'_, '_>, paragraph: ParagraphLi
                 split_limits,
                 split_runs,
                 split_budget,
-                balance_runs: *balance_runs,
+                trial,
+                limits,
+                balance_runs,
+                balance_budget,
                 hyph_relays,
                 restores,
                 paragraph_count: np,
