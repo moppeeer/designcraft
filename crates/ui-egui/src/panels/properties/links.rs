@@ -314,14 +314,14 @@ pub fn preflight_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     }
     // The chosen issue by what it is (kind, object, message), not its row: the list is checked
     // again every frame, and an edit can remove the rows before it.
-    let sel_key = egui::Id::new("preflight_sel");
+    let sel_key = egui::Id::unique("preflight_sel");
     let identity = |i: &designcraft_engine::cmd::preflight::Issue| (i.kind.to_string(), i.item, i.message.clone());
     let mut chosen: Option<usize> =
         ui.data(|d| d.get_temp::<(String, Option<u64>, String)>(sel_key)).and_then(|want| issues.iter().position(|i| identity(i) == want));
     let mut go: Option<usize> = None;
     let row = |ui: &mut egui::Ui, depth: f32, label: &str, open: Option<bool>, selected: bool| {
         let (r, resp) = ui.allocate_exact_size(vec2(w, 21.0), Sense::click());
-        resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, label));
+        resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, label));
         if selected {
             ui.painter().rect_filled(r, 0.0, t.row_selected);
         } else if resp.hovered() {
@@ -345,7 +345,7 @@ pub fn preflight_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().max_height(260.0).auto_shrink([false, true]).show(ui, |ui| {
         for (cat, rules) in &tree {
             let n: usize = rules.iter().map(|(_, v)| v.len()).sum();
-            let cat_id = egui::Id::new(("preflight_open", *cat));
+            let cat_id = egui::Id::unique(("preflight_open", *cat));
             let cat_open = ui.data(|d| d.get_temp::<bool>(cat_id)).unwrap_or(true);
             let (_, resp) = row(ui, 0.0, &format!("{} ({n})", crate::i18n::tr(&lang, cat)), Some(cat_open), false);
             if resp.clicked() {
@@ -355,7 +355,7 @@ pub fn preflight_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
                 continue;
             }
             for (rule, ks) in rules {
-                let rule_id = egui::Id::new(("preflight_open", *cat, *rule));
+                let rule_id = egui::Id::unique(("preflight_open", *cat, *rule));
                 let rule_open = ui.data(|d| d.get_temp::<bool>(rule_id)).unwrap_or(true);
                 let (_, resp) = row(ui, 1.0, &format!("{} ({})", crate::i18n::tr(&lang, rule), ks.len()), Some(rule_open), false);
                 if resp.clicked() {
@@ -379,7 +379,7 @@ pub fn preflight_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
                         let pr = Rect::from_min_max(pos2(r.right() - page_col, r.min.y), r.max);
                         let presp = ui.interact(pr, ui.scope_id().with(("preflight_page", k)), Sense::click());
                         presp.widget_info(|| {
-                            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("{} {label}", crate::i18n::tr(&lang, "Page")))
+                            egui::WidgetInfo::labeled(egui::Role::Button, true, format!("{} {label}", crate::i18n::tr(&lang, "Page")))
                         });
                         ui.painter().text(
                             pr.left_center() + vec2(4.0, 0.0),
