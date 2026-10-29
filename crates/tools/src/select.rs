@@ -744,8 +744,8 @@ impl SelectionTool {
         }
         // A selected placed graphic's own handles resize it inside its frame (the
         // frame's anchors, under Direct Selection, come first).
-                if !self.free
-                    && let Some((id, h)) = content_handle_at(cx, p)
+        if !self.free
+            && let Some((id, h)) = content_handle_at(cx, p)
             && let (Some(loc), Some((_, b))) = (cx.doc.find(id), selected_graphic(cx))
         {
             let turns = cx.layout.slot(loc.spread).map_or(0, |s| s.rotation as usize);
@@ -787,7 +787,7 @@ impl SelectionTool {
         }
         // The content grabber: select the frame's content; a drag moves it.
         if !self.direct
-                    && !self.free
+            && !self.free
             && !ev.mods.shift
             && let Some(id) = grabber_at(cx, p)
         {
@@ -824,7 +824,7 @@ impl SelectionTool {
                     // key object, on release so that a drag still moves them all.
                     self.key_release = Some(id.0);
                 }
-                        let content = !self.free && (self.direct || on_selected_content(cx, p));
+                let content = !self.free && (self.direct || on_selected_content(cx, p));
                 self.drag = Drag::Pending { start: p, hit: true, content };
                 let _ = sr;
                 out
@@ -982,16 +982,16 @@ impl SelectionTool {
             Drag::Resize { handle, start, from, spread } => {
                 let _ = start;
                 let pointer = cx.layout.to_spread(spread, p);
-                    // Free Transform: Cmd during a side handle's drag shears, the opposite edge
-                    // staying put (Alt: the centre, so both sides move), as in InDesign.
-                    if self.free
-                        && ev.mods.cmd
-                        && handle % 2 == 1
-                        && let Some(shear) = free_shear(from, handle, pointer, ev.mods.alt)
-                    {
-                        self.guides.clear();
-                        return vec![Action::Preview("transform.shear".into(), shear)];
-                    }
+                // Free Transform: Cmd during a side handle's drag shears, the opposite edge
+                // staying put (Alt: the centre, so both sides move), as in InDesign.
+                if self.free
+                    && ev.mods.cmd
+                    && handle % 2 == 1
+                    && let Some(shear) = free_shear(from, handle, pointer, ev.mods.alt)
+                {
+                    self.guides.clear();
+                    return vec![Action::Preview("transform.shear".into(), shear)];
+                }
                 let raw = resize_edges_rect(from, handle, pointer);
                 let mut to = resize_rect(from, handle, pointer, ev.mods);
                 // Space while dragging: Live Distribute (several objects keep their size).
@@ -1034,7 +1034,7 @@ impl SelectionTool {
                 }
                 vec![Action::Preview(
                     "transform.resize".into(),
-                        json!({"from": rect_json(from), "to": rect_json(to), "content": ev.mods.cmd || self.free, "distribute": distribute}),
+                    json!({"from": rect_json(from), "to": rect_json(to), "content": ev.mods.cmd || self.free, "distribute": distribute}),
                 )]
             }
             Drag::ContentResize { id, handle, from, spread } => {
