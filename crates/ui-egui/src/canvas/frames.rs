@@ -135,7 +135,7 @@ fn draw_item_edges(painter: &egui::Painter, xf: &Xf, doc: &Document, it: &Item, 
 /// The X of an empty graphic frame, in its own space: a four-cornered frame joins its opposite
 /// corners, so a frame slanted with Direct Selection keeps its X corner to corner, as InDesign
 /// draws it; other shapes span their bounds.
-fn frame_x(it: &Item) -> [(Point, Point); 2] {
+pub(super) fn frame_x(it: &Item) -> [(Point, Point); 2] {
     // A rectangle (slanted or not: four corner points, no handles). Ellipses, polygons (a
     // four-sided one is a diamond) and curved paths keep the X across their bounds. Edited points
     // make any of them a path: a four-cornered one whose corners would cross as a plus (a diamond,
