@@ -142,13 +142,13 @@ pub(super) fn selection_color(app: &DesignApp) -> Color32 {
 
 /// What a link badge shows: the chain of a linked file, or the trouble the Links panel reports.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum LinkBadge {
+pub(super) enum LinkBadge {
     Linked,
     Modified,
     Missing,
 }
 
-type LinkStatuses = std::sync::Arc<std::collections::HashMap<u64, String>>;
+pub(super) type LinkStatuses = std::sync::Arc<std::collections::HashMap<u64, String>>;
 
 /// The link badges' check: the last result, the document state it was made for, and a check
 /// running off the UI thread.
@@ -166,7 +166,7 @@ struct LinkCheck {
 /// badges. Checking reads the linked files, so it runs on a background thread when the document
 /// changes and at most once a second otherwise; the badges show the last result meanwhile (none
 /// for another document).
-fn link_statuses(app: &mut DesignApp, ctx: &egui::Context, doc: &Document) -> LinkStatuses {
+pub(super) fn link_statuses(app: &mut DesignApp, ctx: &egui::Context, doc: &Document) -> LinkStatuses {
     if !doc.assets.values().any(|a| a.link.is_some()) {
         return Default::default();
     }
@@ -212,7 +212,7 @@ fn link_statuses(app: &mut DesignApp, ctx: &egui::Context, doc: &Document) -> Li
 /// edge, near the left corner, in its layer's colour, as InDesign marks placed files. A modified
 /// link shows a warning and a missing one a stop instead, as in the Links panel. Returns each
 /// badge's screen centre, kind and colour.
-fn link_badges(doc: &Document, layout: &CanvasLayout, xf: &Xf, status: &std::collections::HashMap<u64, String>) -> Vec<(Pos2, LinkBadge, Color32)> {
+pub(super) fn link_badges(doc: &Document, layout: &CanvasLayout, xf: &Xf, status: &std::collections::HashMap<u64, String>) -> Vec<(Pos2, LinkBadge, Color32)> {
     fn walk(
         doc: &Document,
         xf: &Xf,
@@ -280,7 +280,7 @@ fn link_badges(doc: &Document, layout: &CanvasLayout, xf: &Xf, status: &std::col
 /// A link badge centred on `c`: two interlocked links on a light halo, so it reads over any
 /// picture; a red stop with a question mark for a missing file, a yellow warning for a modified
 /// one. Drawn in code.
-fn draw_link_badge(painter: &egui::Painter, c: Pos2, badge: LinkBadge, col: Color32) {
+pub(super) fn draw_link_badge(painter: &egui::Painter, c: Pos2, badge: LinkBadge, col: Color32) {
     match badge {
         LinkBadge::Linked => {
             painter.rect_filled(Rect::from_center_size(c, vec2(24.0, 13.0)), 6.5, Color32::from_white_alpha(235));
