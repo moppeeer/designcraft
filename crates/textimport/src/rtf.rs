@@ -62,8 +62,6 @@ const SKIP: &[&str] = &[
     "object",
 ];
 
-/// [`import_with`] with the default options (the tests' shorthand).
-#[cfg(test)]
 struct ControlWord {
     word: String,
     parameter: Option<i64>,
@@ -93,6 +91,8 @@ fn read_control_word(chars: &[char], index: usize) -> ControlWord {
     ControlWord { word, parameter, next_index }
 }
 
+/// [`import_with`] with the default options (the tests' shorthand).
+#[cfg(test)]
 pub fn import(bytes: &[u8]) -> Result<Imported, ImportError> {
     import_with(bytes, &designcraft_doc::TextImportOptions::default())
 }
