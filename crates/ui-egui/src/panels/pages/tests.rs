@@ -357,15 +357,15 @@ fn the_panel_menu_follows_indesigns_order() {
         let path = std::env::temp_dir().join(format!("designcraft-pages-load-parents-{}.designcraft", std::process::id()));
         std::fs::write(&path, bytes).unwrap();
         let picked = path.to_string_lossy().to_string();
-        let services =
-            crate::Services { pick_open: Some(Box::new(move |purpose| (purpose == "parents").then(|| picked.clone()))), ..Default::default() };
-        let mut app = DesignApp::new(designcraft_engine::Session::new(), services);
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.answer_dialogs(crate::app::file_dialogs::testing::answer_with(Some(picked)));
         app.run("file.new", json!({"facingPages": false})).unwrap();
         let mut h = menu_harness(app, 0, 0);
         h.get_by_label("Parent Pages").click();
         h.run_steps(3);
         h.get_by_label("Load Parent Pages…").click();
         h.run_steps(3);
+        h.state_mut().settle_dialogs();
         std::fs::remove_file(&path).unwrap();
         let d = h.state().ui.dialog.as_ref().expect("A-Parent is in both: the dialog asks");
         assert_eq!(d.id, "loadParents");
