@@ -34,7 +34,6 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Paste", "ჩასმა"),
     ("New Object Style", "ახალი ობიექტის სტილი"),
     ("Object Style Options", "ობიექტის სტილის პარამეტრები"),
-    ("Object Style Options…", "ობიექტის სტილის პარამეტრები…"),
     ("Basic Attributes", "ძირითადი ატრიბუტები"),
     ("Stroke & Corner Options", "კონტურისა და კუთხეების პარამეტრები"),
     ("Effects for:", "ეფექტები:"),
