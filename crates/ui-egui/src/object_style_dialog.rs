@@ -333,7 +333,7 @@ fn page_ui(app: &DesignApp, ui: &mut egui::Ui, d: &mut Dialog, page: &str) {
                 // Based On isn't editable yet: the style's parent, as it is.
                 ui.add_enabled_ui(false, |ui| {
                     let based = d.s("basedOn");
-                    egui::ComboBox::from_id_salt("os_based_on")
+                    craft_ui::ComboBox::from_id_salt("os_based_on")
                         .selected_text(crate::i18n::style_name(&app.ui.language, &based))
                         .width(220.0)
                         .show_ui(ui, |_| {});
@@ -390,7 +390,7 @@ fn page_ui(app: &DesignApp, ui: &mut egui::Ui, d: &mut Dialog, page: &str) {
                     let cur: designcraft_geom::corners::CornerShape =
                         serde_json::from_value(get(d, &["corners", "corners"])[0]["shape"].clone()).unwrap_or_default();
                     let mut picked = None;
-                    egui::ComboBox::from_id_salt("os_corner_shape").selected_text(tr(cur.label())).width(140.0).show_ui(ui, |ui| {
+                    craft_ui::ComboBox::from_id_salt("os_corner_shape").selected_text(tr(cur.label())).width(140.0).show_ui(ui, |ui| {
                         for s in designcraft_geom::corners::CornerShape::ALL {
                             if ui.selectable_label(s == cur, tr(s.label())).clicked() {
                                 picked = Some(s);
@@ -415,7 +415,7 @@ fn page_ui(app: &DesignApp, ui: &mut egui::Ui, d: &mut Dialog, page: &str) {
                     let cur = d.s("paragraphStyle");
                     let shown = if cur.is_empty() { String::new() } else { crate::i18n::style_name(&app.ui.language, &cur).to_string() };
                     let mut picked = None;
-                    egui::ComboBox::from_id_salt("os_paragraph_style").selected_text(shown).width(240.0).show_ui(ui, |ui| {
+                    craft_ui::ComboBox::from_id_salt("os_paragraph_style").selected_text(shown).width(240.0).show_ui(ui, |ui| {
                         for s in &doc.styles.paragraph {
                             if ui.selectable_label(s.name == cur, crate::i18n::style_name(&app.ui.language, &s.name)).clicked() {
                                 picked = Some(s.name.clone());
@@ -472,7 +472,7 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
                 crate::rtl::label(ui, tr("Effects for:"));
                 // Stroke, Fill and Text levels aren't in the document model yet: the object only.
                 ui.add_enabled_ui(false, |ui| {
-                    egui::ComboBox::from_id_salt("os_fx_level").selected_text(tr("Object")).width(100.0).show_ui(ui, |_| {});
+                    craft_ui::ComboBox::from_id_salt("os_fx_level").selected_text(tr("Object")).width(100.0).show_ui(ui, |_| {});
                 });
             });
             for (key, label) in crate::effects_dialog::PAGES.iter().skip(1) {
