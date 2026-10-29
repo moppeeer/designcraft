@@ -25,7 +25,7 @@ pub use graphic::{
     GraphicLayerOptions, LiveCaption, MAX_CLIP_ANCHORS, MediaOptions, ObjectLiquid, media_kind, media_mime,
 };
 pub use paint::{
-    Arrowhead, Cap, Fill, Join, MAX_DASH, MAX_DASH_ENTRIES, MAX_DASH_PERIODS, MIN_DASH, Stroke, StrokeAlign, StrokeStyleDef, StrokeType,
+    Arrowhead, Cap, Fill, HiddenStroke, Join, MAX_DASH, MAX_DASH_ENTRIES, MAX_DASH_PERIODS, MIN_DASH, Stroke, StrokeAlign, StrokeStyleDef, StrokeType,
     path_length_bound,
 };
 pub use text_frame::{
