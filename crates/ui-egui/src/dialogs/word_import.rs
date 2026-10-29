@@ -90,7 +90,7 @@ fn group(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
 fn choice(ui: &mut egui::Ui, d: &mut Dialog, key: &str, options: &[(&str, &str)], tr: &dyn Fn(&str) -> String) {
     let cur = d.s(key);
     let shown = options.iter().find(|o| o.0 == cur).map_or(options[0].1, |o| o.1);
-    egui::ComboBox::from_id_salt(("word_import", key.to_string())).selected_text(crate::rtl::widget(ui, tr(shown))).width(230.0).show_ui(ui, |ui| {
+    craft_ui::ComboBox::from_id_salt(("word_import", key.to_string())).selected_text(crate::rtl::widget(ui, tr(shown))).width(230.0).show_ui(ui, |ui| {
         for (v, l) in options {
             if ui.selectable_label(cur == *v, crate::rtl::widget(ui, tr(l))).clicked() {
                 d.fields.insert(key.into(), json!(v));
@@ -106,7 +106,7 @@ pub fn show(app: &DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
         crate::rtl::label(ui, tr("Preset:"));
         // Saved presets aren't kept yet: the settings are always [Custom].
         ui.add_enabled_ui(false, |ui| {
-            egui::ComboBox::from_id_salt("word_import_preset").selected_text(tr("[Custom]")).width(200.0).show_ui(ui, |_| {});
+            craft_ui::ComboBox::from_id_salt("word_import_preset").selected_text(tr("[Custom]")).width(200.0).show_ui(ui, |_| {});
         });
     });
     group(ui, &tr("Include"), |ui| {
@@ -131,7 +131,7 @@ pub fn show(app: &DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
                 ui.horizontal(|ui| {
                     crate::rtl::label(ui, tr("Convert Tables To:"));
                     let cur = if d.b("tablesTabbed") { "Unformatted Tabbed Text" } else { "Unformatted Tables" };
-                    egui::ComboBox::from_id_salt("word_import_tables").selected_text(crate::rtl::widget(ui, tr(cur))).width(200.0).show_ui(
+                    craft_ui::ComboBox::from_id_salt("word_import_tables").selected_text(crate::rtl::widget(ui, tr(cur))).width(200.0).show_ui(
                         ui,
                         |ui| {
                             for (v, l) in [(false, "Unformatted Tables"), (true, "Unformatted Tabbed Text")] {
@@ -237,7 +237,7 @@ fn style_mapping(app: &DesignApp, ui: &mut egui::Ui, d: &mut Dialog, tr: &dyn Fn
                 ui.label(w);
                 let mapped = d.fields.get("map").and_then(|m| m.get(w)).and_then(Value::as_str).unwrap_or("").to_string();
                 let shown = if mapped.is_empty() { tr("(import)") } else { mapped.clone() };
-                egui::ComboBox::from_id_salt(("imp_map", w)).selected_text(crate::rtl::widget(ui, &shown)).width(170.0).show_ui(ui, |ui| {
+                craft_ui::ComboBox::from_id_salt(("imp_map", w)).selected_text(crate::rtl::widget(ui, &shown)).width(170.0).show_ui(ui, |ui| {
                     if ui.selectable_label(mapped.is_empty(), crate::rtl::widget(ui, tr("(import)"))).clicked()
                         && let Some(m) = d.fields.get_mut("map").and_then(Value::as_object_mut)
                     {
