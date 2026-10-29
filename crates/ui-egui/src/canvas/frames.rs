@@ -153,13 +153,13 @@ pub(super) type LinkStatuses = std::sync::Arc<std::collections::HashMap<u64, Str
 /// The link badges' check: the last result, the document state it was made for, and a check
 /// running off the UI thread.
 #[derive(Clone, Default)]
-struct LinkCheck {
+pub(super) struct LinkCheck {
     /// Document uid and revision of `map`, and when it was made.
-    key: (u64, u64),
+    pub(super) key: (u64, u64),
     at: f64,
     map: LinkStatuses,
     /// A check running, for that document state: it fills the slot when done.
-    pending: Option<((u64, u64), std::sync::Arc<std::sync::Mutex<Option<std::collections::HashMap<u64, String>>>>)>,
+    pub(super) pending: Option<((u64, u64), std::sync::Arc<std::sync::Mutex<Option<std::collections::HashMap<u64, String>>>>)>,
 }
 
 /// The Links panel's status of each linked asset ("ok", "modified", "missing"), for the link
