@@ -585,7 +585,7 @@ pub(super) fn quick_actions_object(app: &mut DesignApp, ui: &mut Ui, i: &SelInfo
         return;
     }
     if i.is_graphic && i.count == 1 {
-        image_actions(app, ui, hw);
+        super::text::image_actions(app, ui, hw);
         return;
     }
     ui.horizontal(|ui| {

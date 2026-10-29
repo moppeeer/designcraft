@@ -8,7 +8,7 @@ use super::{
 /// Quick Actions for a placed image, as InDesign's: Import File (place another file in the
 /// frame), Embed, Edit Original (the linked file in its default application) and Reveal in
 /// Explorer / Finder (the folder it's in). Linked-file actions are greyed for an embedded image.
-fn image_actions(app: &mut DesignApp, ui: &mut Ui, hw: f32) {
+pub(super) fn image_actions(app: &mut DesignApp, ui: &mut Ui, hw: f32) {
     let tr = |app: &DesignApp, s: &str| crate::i18n::tr(&app.ui.language, s).to_string();
     let asset = app.session.active().and_then(|st| {
         let g = st.selection.items.first().and_then(|id| st.doc.item(*id)).and_then(|it| it.graphic())?;
@@ -82,7 +82,7 @@ fn image_actions(app: &mut DesignApp, ui: &mut Ui, hw: f32) {
 /// not a URL, a device or another computer's): an existing file; to open (Edit Original), one of
 /// the image and document formats File › Place takes; to reveal, a name Explorer's `/select,`
 /// argument can't be broken out of. The error is the status line's message (untranslated).
-fn openable(file: &std::path::Path, reveal: bool) -> Result<(), &'static str> {
+pub(super) fn openable(file: &std::path::Path, reveal: bool) -> Result<(), &'static str> {
     if !designcraft_engine::io::is_file(file) {
         return Err("The link isn't a file on this computer");
     }

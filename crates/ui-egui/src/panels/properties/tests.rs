@@ -4,6 +4,7 @@ use egui_kittest::{
 };
 
 use super::*;
+use super::text::openable;
 
 /// A link to a panel whose flyout is open leaves the flyout open.
 #[test]
