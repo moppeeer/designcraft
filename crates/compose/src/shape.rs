@@ -254,29 +254,18 @@ impl StyleTable<'_> {
         } else {
             None
         };
-                        // Columns a balancing trial shortened break keep options the band would keep
-                        // with more room: the trial fails and the band is laid out again lower,
-                        // before keep options move paragraphs on.
-                        if action.is_some()
-                            && trial.as_ref().is_some_and(|t| t.key == cur.band_key())
-                            && let Some(j) = trial_failed(&mut trial, &mut limits, balance_runs < balance_budget)
-                        {
-                            balance_runs += 1;
-                            rewind(
-                                j,
-                                &snaps,
-                                &note_snaps,
-                                &mut notes,
-                                &mut out,
-                                &mut cur,
-                                &mut list_counter,
-                                &mut force_col,
-                                &mut line_cap,
-                                &mut no_hyph,
-                            );
-                            pi = j;
-                            continue 'paras;
-                        }
+        // Columns a balancing trial shortened break keep options the band would keep
+        // with more room: the trial fails and the band is laid out again lower,
+        // before keep options move paragraphs on.
+        if action.is_some()
+            && trial.as_ref().is_some_and(|t| t.key == cur.band_key())
+            && let Some(j) = trial_failed(&mut trial, &mut limits, balance_runs < balance_budget)
+        {
+            balance_runs += 1;
+            rewind(j, &snaps, &note_snaps, &mut notes, &mut out, &mut cur, &mut list_counter, &mut force_col, &mut line_cap, &mut no_hyph);
+            pi = j;
+            continue 'paras;
+        }
         let rs = RunStyle {
             fill: p.fill.clone(),
             fill_tint: p.fill_tint,
