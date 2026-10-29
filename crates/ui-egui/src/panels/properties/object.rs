@@ -372,7 +372,7 @@ pub(super) fn appearance_section(app: &mut DesignApp, ui: &mut Ui, i: &SelInfo) 
 /// dialog's order (for the link beside the button); and, over every selected object, whether
 /// any has an effect (Clear Effects) and whether any has transparency other than plain (Clear
 /// All Transparency).
-fn applied_effects(app: &DesignApp) -> (Vec<&'static str>, bool, bool) {
+pub(super) fn applied_effects(app: &DesignApp) -> (Vec<&'static str>, bool, bool) {
     let Some(st) = app.session.active() else { return (Vec::new(), false, false) };
     let items: Vec<&designcraft_doc::Item> = st.selection.items.iter().filter_map(|id| st.doc.item(*id)).collect();
     let pages = items.first().map(|it| effect_pages(it)).unwrap_or_default();

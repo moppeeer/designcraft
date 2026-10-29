@@ -585,6 +585,7 @@ pub fn attributes_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
 #[cfg(test)]
 mod effects_panel_tests {
     use super::*;
+    use crate::panels::properties::object::applied_effects;
 
     /// One frame of the Effects panel: the text painted and where.
     fn frame(app: &mut DesignApp, ctx: &egui::Context, events: Vec<egui::Event>) -> Vec<(String, egui::Rect)> {
