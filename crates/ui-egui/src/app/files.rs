@@ -11,9 +11,12 @@ impl DesignApp {
     /// later frame ([`Self::open_picked`]); in a browser the file arrives through the inbox.
     #[track_caller]
     pub fn pick_and_open(&mut self, purpose: &str) -> Result<Value, String> {
-        if let Some(open) = self.services.open_async.as_mut() {
-            let request = ImportRequest { purpose: purpose.into(), target: self.session.active().map(|d| d.uid) };
-            open(request);
+        if self.services.open_async.is_some() {
+            // With the selection asked from: a place replaces its graphic when the file arrives.
+            let request = self.import_request(purpose);
+            if let Some(open) = self.services.open_async.as_mut() {
+                open(request);
+            }
             return Ok(Value::Null);
         }
         let bound = if purpose == "place" { file_dialogs::Bound::Document } else { file_dialogs::Bound::App };
@@ -47,7 +50,7 @@ impl DesignApp {
         designcraft_engine::cmd::has_doc(&self.session)?;
         if let Some(open) = self.services.open_async.as_mut() {
             let purpose = if kind.is_empty() { "styles".to_string() } else { format!("styles:{kind}") };
-            open(ImportRequest { purpose, target: self.session.active().map(|d| d.uid) });
+            open(ImportRequest { purpose, target: self.session.active().map(|d| d.uid), selection: None });
             return Ok(Value::Null);
         }
         let kind = kind.to_string();
