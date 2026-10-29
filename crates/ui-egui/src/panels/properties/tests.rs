@@ -806,7 +806,7 @@ fn several_objects_can_be_distributed_from_properties() {
     assert_eq!(top(h.state(), ids[1]), 186.0, "the middle one halfway between the others");
     // Use Spacing ticked under Distribute Spacing, with 0: the frames touch. (The checkbox is
     // set through its state; #1394 makes checkboxes visible to assistive technology.)
-    h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("props_distribute_spacing"), (true, 0.0f64)));
+    h.ctx.data_mut(|d| d.insert_temp(egui::Id::unique("props_distribute_spacing"), (true, 0.0f64)));
     h.run_steps(2);
     h.state_mut().run("selection.set", json!({ "ids": ids })).unwrap();
     h.get_by_label("Distribute vertical space").click();
@@ -830,7 +830,7 @@ fn two_objects_are_distributed_only_by_a_spacing() {
     let mut h = panel(app);
     let off = |h: &Harness<'_, DesignApp>, l: &str| h.get_by_label(l).accesskit_node().is_disabled();
     assert!(off(&h, "Distribute top edges") && off(&h, "Distribute vertical space"), "two objects need a spacing");
-    h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("props_distribute_spacing"), (true, 10.0f64)));
+    h.ctx.data_mut(|d| d.insert_temp(egui::Id::unique("props_distribute_spacing"), (true, 10.0f64)));
     h.run_steps(2);
     assert!(!off(&h, "Distribute vertical space") && off(&h, "Distribute top edges"), "Use Spacing turns its own row on");
     h.get_by_label("Distribute vertical space").click();
