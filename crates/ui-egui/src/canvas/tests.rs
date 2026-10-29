@@ -109,7 +109,7 @@ fn linked_pictures_carry_the_link_badge() {
         let key = (app.session.active().unwrap().uid, app.session.active().unwrap().revision);
         for _ in 0..1000 {
             let status = link_statuses(app, &ctx, &doc);
-            let check = ctx.data(|d| d.get_temp::<LinkCheck>(egui::Id::new(("link_badge_status", app.pane)))).unwrap();
+            let check = ctx.data(|d| d.get_temp::<LinkCheck>(egui::Id::unique(("link_badge_status", app.pane)))).unwrap();
             if check.key == key && check.pending.is_none() {
                 return link_badges(&doc, &CanvasLayout::new(&doc, false), &xf, &status);
             }

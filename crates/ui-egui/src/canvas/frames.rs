@@ -175,7 +175,7 @@ pub(super) fn link_statuses(app: &mut DesignApp, ctx: &egui::Context, doc: &Docu
     let now = ctx.input(|i| i.time);
     // An idle canvas still draws again when the check is due, so a file changed on disk shows.
     ctx.request_repaint_after(std::time::Duration::from_secs(1));
-    let id = egui::Id::new(("link_badge_status", app.pane));
+    let id = egui::Id::unique(("link_badge_status", app.pane));
     let mut check = ctx.data(|d| d.get_temp::<LinkCheck>(id)).unwrap_or_default();
     if let Some((for_key, slot)) = check.pending.clone()
         && let Some(map) = slot.lock().unwrap_or_else(|e| e.into_inner()).take()
