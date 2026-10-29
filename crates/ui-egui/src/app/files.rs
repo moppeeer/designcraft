@@ -81,7 +81,8 @@ impl DesignApp {
     /// dialog that asks about parents of the same names or another page size.
     fn parents_picked(&mut self, path: String) -> Result<Value, String> {
         let found = self.run("layout.parents.load.list", json!({"path": path}))?;
-        let same: Vec<Value> = found["parents"].as_array().into_iter().flatten().filter(|p| p["conflict"] == true).map(|p| p["label"].clone()).collect();
+        let same: Vec<Value> =
+            found["parents"].as_array().into_iter().flatten().filter(|p| p["conflict"] == true).map(|p| p["label"].clone()).collect();
         if same.is_empty() && found["sizesDiffer"] != true {
             return self.load_parents(json!({"path": path}));
         }
