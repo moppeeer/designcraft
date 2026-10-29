@@ -3540,7 +3540,7 @@ fn bullets_dialog_has_the_grid_add_bullets_and_preview() {
     app.run("app.bulletsNumberingDialog", json!({})).unwrap();
     let mut h = Harness::builder().with_size(egui::vec2(1200.0, 900.0)).build_ui_state(
         |ui, app: &mut DesignApp| {
-            let key = egui::Id::new("bullets_dialog_test_fonts");
+            let key = egui::Id::unique("bullets_dialog_test_fonts");
             if ui.data(|d| d.get_temp::<bool>(key)).is_none() {
                 crate::theme::install_fonts(ui.ctx(), "");
                 ui.data_mut(|d| d.insert_temp(key, true));

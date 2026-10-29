@@ -5344,7 +5344,7 @@ fn choose_bullet(d: &mut Dialog, cell: &BulletCell) {
 fn bullet_texture(ui: &egui::Ui, lu: &ListUi<'_>, cell: &BulletCell, px: u32, ink: egui::Color32) -> Option<egui::TextureHandle> {
     let c = cell.char.chars().next()?;
     let (family, style) = if cell.font.is_empty() { (lu.family, lu.style) } else { (cell.font.as_str(), cell.style.as_str()) };
-    let key = egui::Id::new(("bullet_cell", c, family, style, lu.scope, px, ink.to_array()));
+    let key = egui::Id::unique(("bullet_cell", c, family, style, lu.scope, px, ink.to_array()));
     if let Some(t) = ui.data(|d| d.get_temp::<egui::TextureHandle>(key)) {
         return Some(t);
     }
@@ -5390,9 +5390,9 @@ fn bullet_char(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Value, lu: &L
                     egui::Color32::from_rgb(210, 30, 30),
                 );
             }
-            let resp = ui.interact(r, ui.id().with(("bullet_cell", k)), egui::Sense::click());
+            let resp = ui.interact(r, ui.scope_id().with(("bullet_cell", k)), egui::Sense::click());
             let name = format!("U+{:04X}", cell.char.chars().next().map_or(0, |c| c as u32));
-            resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, sel, &name));
+            resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, sel, &name));
             if resp.clicked() {
                 picked = Some(cell.clone());
             }
@@ -5438,7 +5438,7 @@ fn add_bullets(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, lu: &ListUi<'_>) {
     let mut open = true;
     let mut action = None;
     egui::Window::new(crate::i18n::tr(lang, "Add Bullets"))
-        .id(egui::Id::new("add_bullets"))
+        .id(egui::Id::unique("add_bullets"))
         .collapsible(false)
         .resizable(false)
         .order(egui::Order::Foreground)
