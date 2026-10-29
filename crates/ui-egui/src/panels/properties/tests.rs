@@ -104,10 +104,10 @@ fn an_undecodable_link_thumbnail_is_cached_as_none() {
     let ctx = egui::Context::default();
     let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
         let ctx = ui.ctx();
-        assert!(super::link_thumb(ctx, &doc, aid.0).is_none());
-        let key = super::link_thumb_key(&doc.assets[&aid]);
-        assert!(ctx.data(|d| d.get_temp::<super::LinkThumb>(key)).is_some_and(|(_, t)| t.is_none()), "cached as none");
-        assert!(super::link_thumb(ctx, &doc, aid.0).is_none());
+        assert!(super::links::link_thumb(ctx, &doc, aid.0).is_none());
+        let key = super::links::link_thumb_key(&doc.assets[&aid]);
+        assert!(ctx.data(|d| d.get_temp::<super::links::LinkThumb>(key)).is_some_and(|(_, t)| t.is_none()), "cached as none");
+        assert!(super::links::link_thumb(ctx, &doc, aid.0).is_none());
     });
     out.textures_delta.clear();
 }
@@ -133,16 +133,16 @@ fn a_link_thumbnail_entry_of_data_that_is_gone_is_stale() {
         ..Default::default()
     };
     doc.assets.insert(aid, Arc::new(a));
-    let key = super::link_thumb_key(&doc.assets[&aid]);
+    let key = super::links::link_thumb_key(&doc.assets[&aid]);
     // What an undecodable file left at this key before its data was freed: no thumbnail, and
     // a reference to data that is gone.
     let gone = Arc::downgrade(&Arc::new(b"not a png".to_vec()));
     let ctx = egui::Context::default();
-    ctx.data_mut(|d| d.insert_temp::<super::LinkThumb>(key, (gone, None)));
+    ctx.data_mut(|d| d.insert_temp::<super::links::LinkThumb>(key, (gone, None)));
     let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
         let ctx = ui.ctx();
-        assert!(super::link_thumb(ctx, &doc, aid.0).is_some(), "the link's own image, not the stale none");
-        let (data, t) = ctx.data(|d| d.get_temp::<super::LinkThumb>(key)).expect("the new entry");
+        assert!(super::links::link_thumb(ctx, &doc, aid.0).is_some(), "the link's own image, not the stale none");
+        let (data, t) = ctx.data(|d| d.get_temp::<super::links::LinkThumb>(key)).expect("the new entry");
         assert!(t.is_some() && data.upgrade().is_some_and(|d| Arc::ptr_eq(&d, &doc.assets[&aid].data)), "made from this data");
     });
     out.textures_delta.clear();

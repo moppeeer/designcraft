@@ -419,7 +419,7 @@ fn paint_link_status(p: &egui::Painter, r: Rect, status: &str, t: &Tokens) {
 /// The key is the data's address; the entry holds a weak reference to that data, which keeps
 /// the address from being reused while the entry lives, and an entry whose data is gone (the
 /// link relinked or updated, the document closed) is stale.
-fn link_thumb(ctx: &egui::Context, doc: &designcraft_doc::Document, aid: u64) -> Option<egui::TextureHandle> {
+pub(super) fn link_thumb(ctx: &egui::Context, doc: &designcraft_doc::Document, aid: u64) -> Option<egui::TextureHandle> {
     let a = doc.assets.get(&designcraft_doc::AssetId(aid))?;
     let key = link_thumb_key(a);
     if let Some((data, t)) = ctx.data(|d| d.get_temp::<LinkThumb>(key))
@@ -439,10 +439,10 @@ fn link_thumb(ctx: &egui::Context, doc: &designcraft_doc::Document, aid: u64) ->
 
 /// A cached Links panel thumbnail: the image data it was made from, and the texture (none when
 /// the data didn't decode).
-type LinkThumb = (std::sync::Weak<Vec<u8>>, Option<egui::TextureHandle>);
+pub(super) type LinkThumb = (std::sync::Weak<Vec<u8>>, Option<egui::TextureHandle>);
 
 /// The cache key of an asset's Links panel thumbnail: its data and page.
-fn link_thumb_key(a: &designcraft_doc::Asset) -> egui::Id {
+pub(super) fn link_thumb_key(a: &designcraft_doc::Asset) -> egui::Id {
     egui::Id::unique(("link_thumb", std::sync::Arc::as_ptr(&a.data) as usize, a.data.len(), a.page))
 }
 
