@@ -2707,19 +2707,8 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
     let mut span_paras = vec![false; np];
     let mut split_paras = vec![false; np];
     'paras: while pi <= np {
-        // A rewind to before a balancing trial's paragraph (keep options) lays that paragraph out
-        // again: its trial and the bottoms it found are stale. Left in place, the trial would
-        // rewind forward to its paragraph when it fails, past paragraphs not laid out yet.
-        if trial.as_ref().is_some_and(|t| t.key.para() > pi)
-            && let Some(t) = trial.take()
-        {
-            set_limit(&mut limits, t.key, None);
-        }
-        if split_trial.as_ref().is_some_and(|t| t.key.para() > pi)
-            && let Some(t) = split_trial.take()
-        {
-            set_limit(&mut split_limits, t.key, None);
-        }
+        drop_trial_after(&mut trial, &mut limits, pi);
+        drop_trial_after(&mut split_trial, &mut split_limits, pi);
         cur.pi = pi;
         cur.limits = Rc::clone(&limits);
         cur.split_limits = Rc::clone(&split_limits);
@@ -3889,6 +3878,17 @@ fn balance_end(
     }
     *trial = Some(t);
     Some(key.1)
+}
+
+/// A rewind to before a balancing trial's paragraph (keep options) lays that paragraph out again:
+/// its trial and the bottoms it found are stale. Left in place, the trial would rewind forward to
+/// its paragraph when it fails, past paragraphs not laid out yet.
+fn drop_trial_after<K: TrialKey>(trial: &mut Option<Trial<K>>, limits: &mut Rc<Vec<(K, f64)>>, pi: usize) {
+    if trial.as_ref().is_some_and(|t| t.key.para() > pi)
+        && let Some(t) = trial.take()
+    {
+        set_limit(limits, t.key, None);
+    }
 }
 
 fn set_limit<K: TrialKey>(limits: &mut Rc<Vec<(K, f64)>>, key: K, bottom: Option<f64>) {
