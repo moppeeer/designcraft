@@ -29,7 +29,7 @@ pub use paint::{
     path_length_bound,
 };
 pub use text_frame::{
-    AutoSize, ColumnsKind, ContourType, FirstBaseline, FrameBaselineGrid, FrameGridRelative, PathAlign, PathType, TextFrame, TextFrameOptions,
+    AutoSize, ColumnsKind, DEFAULT_ALPHA_THRESHOLD, ContourType, FirstBaseline, FrameBaselineGrid, FrameGridRelative, PathAlign, PathType, TextFrame, TextFrameOptions,
     TextWrap, VerticalJustification, WrapMode, WrapSide, vertical_text_xf,
 };
 
