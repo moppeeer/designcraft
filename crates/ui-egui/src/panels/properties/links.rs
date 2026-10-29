@@ -1,4 +1,4 @@
-use super::{DesignApp, Sense, Tokens, Value, divider, json, sel_info, units, vec2};
+use super::{DesignApp, Sense, Tokens, Value, divider, json, sel_info, units, vec2, widgets};
 use crate::app::file_dialogs::Bound;
 
 /// Links: status (missing / modified / embedded), page and effective resolution of every placed
