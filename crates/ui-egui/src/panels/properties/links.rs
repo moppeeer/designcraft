@@ -4,10 +4,9 @@ use crate::icons;
 use crate::widgets::{self, icon_toggle};
 use egui::{Rect, Stroke, pos2};
 
-/// Links: status (missing / modified / embedded), page and effective resolution of every placed
-/// graphic and linked text file; Relink, Go To Link, Update Link, Embed Link for the chosen row.
-pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
-    // Linked stories (Place and Link).
+/// Linked stories (Place and Link), above the links: each with its source story, and Update when
+/// it is out of date.
+fn linked_stories(app: &mut DesignApp, ui: &mut egui::Ui) {
     let stories = app.session.execute("story.links", &json!({})).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
     if !stories.is_empty() {
         crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "Linked Stories")).strong());
@@ -36,6 +35,12 @@ pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
         }
         ui.separator();
     }
+}
+
+/// Links: status (missing / modified / embedded), page and effective resolution of every placed
+/// graphic and linked text file; Relink, Go To Link, Update Link, Embed Link for the chosen row.
+pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
+    linked_stories(app, ui);
     let Some(st) = app.session.active() else { return };
     let t = Tokens::get(ui.ctx());
     // The list checks files on disk: refresh it at most twice a second.
