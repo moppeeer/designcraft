@@ -447,6 +447,8 @@ fn offscreen(reach: Rect, spread: f64, width: u16, height: u16) -> Option<Offscr
 #[cfg(test)]
 mod tests {
     use designcraft_compose::Cache;
+    use designcraft_doc::build::NewDocument;
+    use designcraft_doc::{Document, SpreadRef, StrokeAlign, StrokeType};
 
     use super::*;
     use crate::RenderOptions;
