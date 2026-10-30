@@ -520,6 +520,7 @@ mod import_warning_tests {
 #[cfg(test)]
 pub(crate) mod browser_import_tests {
     use super::*;
+    use designcraft_geom::Unit;
 
     fn app() -> DesignApp {
         let mut app = DesignApp::new(Session::new(), Services { inbox: Some(Inbox::default()), ..Default::default() });
