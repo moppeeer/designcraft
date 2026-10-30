@@ -148,7 +148,7 @@ fn run_ui_part1(app: &mut DesignApp, id: &str, p: &Value) -> Option<Result<Value
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
-            app.ui.dialog = Some(crate::dialogs::Dialog::new("importOptions", crate::dialogs::word_import::fields(&path, &info)));
+            app.ui.dialog = Some(crate::dialogs::Dialog::new("importOptions", crate::dialogs::word_import::fields(path, &info)));
             Ok(Value::Null)
         }
         "app.save" | "app.saveDialog" if app.services.download.is_some() => download_document(app),
