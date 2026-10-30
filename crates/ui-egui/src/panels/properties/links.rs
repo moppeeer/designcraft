@@ -355,7 +355,7 @@ pub(super) fn middle_ellipsis(painter: &egui::Painter, text: &str, font: &egui::
 }
 
 /// A linked graphic's format, as the Links panel's Link Info names it.
-fn link_format(mime: &str) -> String {
+pub(super) fn link_format(mime: &str) -> String {
     match mime {
         "image/jpeg" => "JPEG".into(),
         "image/png" => "PNG".into(),
@@ -371,7 +371,7 @@ fn link_format(mime: &str) -> String {
 }
 
 /// A file size as the Links panel shows it: KB below a megabyte, MB above.
-fn file_size(bytes: u64) -> String {
+pub(super) fn file_size(bytes: u64) -> String {
     if bytes < 1024 * 1024 { format!("{} KB", bytes.div_ceil(1024)) } else { format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0)) }
 }
 
