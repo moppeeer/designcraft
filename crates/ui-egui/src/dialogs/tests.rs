@@ -3619,11 +3619,12 @@ fn bullets_dialog_has_the_grid_add_bullets_and_preview() {
     confirm(h.state_mut()).unwrap();
     assert_eq!(sep(&mut h), json!("^>"));
     assert_eq!(h.state().session.doc().unwrap().history.undo.len(), undo + 1);
-    // Numbers: Text After has its ▾, the Number (whose `^#` it would replace) doesn't.
+    // Numbers: the Number has its ▸ but no ▾ (a white space would replace its `^#`); Text After is
+    // the bullets' field.
     h.state_mut().run("app.bulletsNumberingDialog", json!({})).unwrap();
     h.state_mut().ui.dialog.as_mut().unwrap().fields.insert("p.listType".into(), json!("numbers"));
     h.run_steps(3);
     assert!(h.query_by_label("Number:").is_some());
-    assert_eq!(h.query_all_by_label("Insert Special Character").count(), 2);
-    assert_eq!(h.query_all_by_label("Insert White Space").count(), 1);
+    assert_eq!(h.query_all_by_label("Insert Special Character").count(), 1);
+    assert_eq!(h.query_all_by_label("Insert White Space").count(), 0);
 }
