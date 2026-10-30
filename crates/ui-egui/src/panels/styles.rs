@@ -144,7 +144,7 @@ pub fn object(app: &mut DesignApp, ui: &mut egui::Ui) {
             ui.painter().rect_filled(row, 0.0, t.hover);
         }
         let label = shown(n, is_current && current.as_ref().is_some_and(|c| c.1));
-        resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, is_current, &label));
+        resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, is_current, &label));
         crate::rtl::paint(ui.painter(), row.min + vec2(24.0, 11.0), egui::Align2::LEFT_CENTER, &label, egui::FontId::proportional(12.5), t.text);
         // The default styles of new graphic and text frames, as InDesign marks them.
         let mark = egui::Rect::from_center_size(egui::pos2(row.max.x - 14.0, row.center().y), vec2(11.0, 11.0));
@@ -379,7 +379,7 @@ mod tests {
         app.run("style.object.create", json!({"name": "Framed", "fromSelection": false, "stroke": {"swatch": "[Paper]", "weight": 3}})).unwrap();
         let mut h = Harness::builder().with_size(vec2(320.0, 260.0)).build_ui_state(
             |ui, app: &mut DesignApp| {
-                let id = egui::Id::new("test_fonts");
+                let id = egui::Id::unique("test_fonts");
                 if ui.data(|d| d.get_temp::<bool>(id)).is_none() {
                     crate::theme::install_fonts(ui.ctx(), "");
                     ui.data_mut(|d| d.insert_temp(id, true));
