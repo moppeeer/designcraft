@@ -114,7 +114,8 @@ impl Placed {
 const ICON_GROUPS: &[&[&str]] = &[
     &["stroke", "color", "swatches", "gradient"],
     &["effects"],
-    &["characterStyles", "paragraphStyles", "objectStyles"],
+    &["characterStyles", "paragraphStyles"],
+    &["objectStyles"],
     &["character", "paragraph", "typography"],
     &["glyphs", "story"],
     &["table"],
