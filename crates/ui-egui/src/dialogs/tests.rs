@@ -3588,7 +3588,10 @@ fn bullets_dialog_has_the_grid_add_bullets_and_preview() {
         assert_eq!(field(&h, "addBullets"), Some(json!(false)), "{key:?} closes Add Bullets");
         assert_eq!(field(&h, "p.bulletChar") == Some(json!(glyph)), added, "{key:?}");
     }
-    // Delete: the added bullet goes, and the bullet goes back to InDesign's first.
+    // Delete: the added bullet goes, and the bullet goes back to InDesign's first. Enter above
+    // chose ★; the arrow is chosen again first.
+    h.get_by_label("U+2192").click();
+    h.run_steps(3);
     h.get_by_label("Delete").click();
     h.run_steps(3);
     assert!(h.query_by_label("U+2192").is_none());
