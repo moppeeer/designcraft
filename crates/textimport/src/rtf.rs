@@ -111,9 +111,7 @@ pub fn import_with(bytes: &[u8], opts: &designcraft_doc::TextImportOptions) -> R
     let mut buf = String::new();
     let mut fmt = stack[0].format();
     let mut warnings = Vec::new();
-    // Notes being read: the group depth of each `{\footnote …}`, the story it interrupted (the
-    // note's text is read into `st` meanwhile), and whether it's an endnote (`\ftnalt`).
-    let mut notes: Vec<(usize, Story, bool)> = Vec::new();
+    let mut notes: Notes = Vec::new();
     let flush = |st: &mut Story, buf: &mut String, fmt: &CharFormat| {
         if !buf.is_empty() {
             let len = st.len();
@@ -152,13 +150,8 @@ pub fn import_with(bytes: &[u8], opts: &designcraft_doc::TextImportOptions) -> R
                     stack.pop();
                 }
                 // The note's group closed: back to the text it interrupted, with the note there.
-                if notes.last().is_some_and(|n| stack.len() < n.0)
-                    && let Some((_, outer, endnote)) = notes.pop()
-                {
-                    let note = std::mem::replace(&mut st, outer);
-                    if if endnote { opts.endnotes } else { opts.footnotes } {
-                        add_note(&mut st, note, endnote, &mut warnings);
-                    }
+                if notes.last().is_some_and(|n| stack.len() < n.0) {
+                    end_note(&mut notes, &mut st, opts, &mut warnings);
                 }
                 // The `\uN` fallback skip ends with the group.
                 pending = 0;
@@ -216,19 +209,7 @@ pub fn import_with(bytes: &[u8], opts: &designcraft_doc::TextImportOptions) -> R
                     continue;
                 }
                 let skip = stack.last().is_some_and(|s| s.skip);
-                if word == "footnote" && !skip {
-                    flush(&mut st, &mut buf, &fmt);
-                    if opts.footnotes || opts.endnotes {
-                        notes.push((stack.len(), std::mem::replace(&mut st, Story::new(StoryId(0))), false));
-                    } else if let Some(s) = stack.last_mut() {
-                        s.skip = true;
-                    }
-                    continue;
-                }
-                if word == "ftnalt" && !skip {
-                    if let Some(n) = notes.last_mut().filter(|n| n.0 == stack.len()) {
-                        n.2 = true;
-                    }
+                if !skip && note_word(&word, &mut st, &mut buf, &fmt, &mut notes, &mut stack, opts) {
                     continue;
                 }
                 if SKIP.contains(&word.as_str()) {
@@ -321,11 +302,8 @@ pub fn import_with(bytes: &[u8], opts: &designcraft_doc::TextImportOptions) -> R
     }
     flush(&mut st, &mut buf, &fmt);
     // A file that ends inside a note: the note ends there.
-    while let Some((_, outer, endnote)) = notes.pop() {
-        let note = std::mem::replace(&mut st, outer);
-        if if endnote { opts.endnotes } else { opts.footnotes } {
-            add_note(&mut st, note, endnote, &mut warnings);
-        }
+    while !notes.is_empty() {
+        end_note(&mut notes, &mut st, opts, &mut warnings);
     }
     // A trailing \par leaves an empty last paragraph.
     if st.text.ends_with('\n') {
@@ -336,6 +314,56 @@ pub fn import_with(bytes: &[u8], opts: &designcraft_doc::TextImportOptions) -> R
     // A page or column break ends its paragraph.
     st.end_paragraphs_at_breaks();
     Ok(Imported { story: st, para_styles: vec![], char_styles: vec![], warnings })
+}
+
+/// Notes being read: the group depth of each `{\footnote …}`, the story it interrupted (the
+/// note's text is read into the current story meanwhile), and whether it's an endnote (`\ftnalt`).
+type Notes = Vec<(usize, Story, bool)>;
+
+/// `\footnote` starts a note (read into a story of its own, or skipped when the options take no
+/// notes); `\ftnalt` makes the note being read an endnote. Whether `word` was one of them.
+fn note_word(
+    word: &str,
+    st: &mut Story,
+    buf: &mut String,
+    fmt: &CharFormat,
+    notes: &mut Notes,
+    stack: &mut [State],
+    opts: &designcraft_doc::TextImportOptions,
+) -> bool {
+    match word {
+        "footnote" => {
+            if !buf.is_empty() {
+                let len = st.len();
+                st.insert_with(len, buf, fmt.clone());
+                buf.clear();
+            }
+            if opts.footnotes || opts.endnotes {
+                notes.push((stack.len(), std::mem::replace(st, Story::new(StoryId(0))), false));
+            } else if let Some(s) = stack.last_mut() {
+                s.skip = true;
+            }
+            true
+        }
+        "ftnalt" => {
+            if let Some(n) = notes.last_mut().filter(|n| n.0 == stack.len()) {
+                n.2 = true;
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+/// The innermost note ends: back to the text it interrupted, with the note there when the options
+/// keep that kind of note.
+fn end_note(notes: &mut Notes, st: &mut Story, opts: &designcraft_doc::TextImportOptions, warnings: &mut Vec<String>) {
+    if let Some((_, outer, endnote)) = notes.pop() {
+        let note = std::mem::replace(st, outer);
+        if if endnote { opts.endnotes } else { opts.footnotes } {
+            add_note(st, note, endnote, warnings);
+        }
+    }
 }
 
 /// A footnote (or endnote) with `text` at the end of `st`. Its reference mark is generated, so
