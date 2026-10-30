@@ -86,7 +86,7 @@ fn style_names(doc: &designcraft_doc::Document, para: bool) -> Vec<String> {
 
 /// The panel's selected styles: more than one after Ctrl/Cmd- or Shift-clicks.
 fn picked_id(para: bool) -> egui::Id {
-    egui::Id::new(("styles_picked", para))
+    egui::Id::unique(("styles_picked", para))
 }
 
 /// The picked styles that still exist: a move, rename or delete leaves old names behind.
@@ -111,11 +111,11 @@ fn move_to_group(app: &mut DesignApp, para: bool, names: &[String], group: &str)
 /// and the name (a double-click renames it); styles dropped on it move into it. Returns whether
 /// it is open.
 fn group_row(app: &mut DesignApp, ui: &mut egui::Ui, para: bool, g: &str, t: &Tokens) -> bool {
-    let open_id = egui::Id::new(("style_group_open", para, g));
+    let open_id = egui::Id::unique(("style_group_open", para, g));
     let mut open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(true);
-    let rename_id = egui::Id::new(("style_group_rename", para));
+    let rename_id = egui::Id::unique(("style_group_rename", para));
     // Set when a rename starts: the field takes the focus once, so a click elsewhere commits it.
-    let focus_id = egui::Id::new(("style_group_rename_focus", para));
+    let focus_id = egui::Id::unique(("style_group_rename_focus", para));
     let renaming: Option<(String, String)> = ui.data(|d| d.get_temp(rename_id));
     let (row, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::click());
     let dropping = hovering(&resp, para);
@@ -161,7 +161,7 @@ fn group_row(app: &mut DesignApp, ui: &mut egui::Ui, para: bool, g: &str, t: &To
             );
         }
     }
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::CollapsingHeader, true, g));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, g));
     // A triple click counts too: egui reports quick clicks after others as one.
     if resp.double_clicked() || resp.triple_clicked() {
         ui.data_mut(|d| {
@@ -281,7 +281,7 @@ fn style_row(
     let shown = n.rsplit('/').next().unwrap_or(n);
     let label = if n.contains('/') { shown } else { crate::i18n::style_name(&app.ui.language, shown) };
     let row_label = format!("{label}{}", if current == Some(n) && overridden { "+" } else { "" });
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, &row_label));
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, &row_label));
     crate::rtl::paint(
         ui.painter(),
         row.min + vec2(8.0 + indent, 11.0),
@@ -351,7 +351,7 @@ fn style_row(
                     }
                 }
                 ui.separator();
-                let id = egui::Id::new(("new_style_group", para));
+                let id = egui::Id::unique(("new_style_group", para));
                 let mut name: String = ui.data(|d| d.get_temp(id)).unwrap_or_default();
                 let r = ui.add(
                     egui::TextEdit::singleline(&mut name)
@@ -396,7 +396,7 @@ mod tests {
     fn both_panels(app: DesignApp) -> Harness<'static, DesignApp> {
         let mut h = Harness::builder().with_size(vec2(640.0, 420.0)).with_step_dt(1.0 / 60.0).build_ui_state(
             |ui, app: &mut DesignApp| {
-                let id = egui::Id::new("styles_test_fonts");
+                let id = egui::Id::unique("styles_test_fonts");
                 if ui.data(|d| d.get_temp::<bool>(id)).is_none() {
                     crate::theme::install_fonts(ui.ctx(), "");
                     ui.data_mut(|d| d.insert_temp(id, true));
@@ -473,7 +473,7 @@ mod tests {
         // 60 frames a second, so two clicks make a double-click.
         let mut h = Harness::builder().with_size(vec2(320.0, 420.0)).with_step_dt(1.0 / 60.0).build_ui_state(
             |ui, app: &mut DesignApp| {
-                let id = egui::Id::new("styles_test_fonts");
+                let id = egui::Id::unique("styles_test_fonts");
                 if ui.data(|d| d.get_temp::<bool>(id)).is_none() {
                     crate::theme::install_fonts(ui.ctx(), "");
                     ui.data_mut(|d| d.insert_temp(id, true));
@@ -586,7 +586,7 @@ mod tests {
         app.run("style.paragraph.apply", json!({"name": "Recipe titles"})).unwrap();
         let mut h = Harness::builder().with_size(vec2(320.0, 420.0)).with_step_dt(1.0 / 60.0).build_ui_state(
             |ui, app: &mut DesignApp| {
-                let id = egui::Id::new("styles_test_fonts");
+                let id = egui::Id::unique("styles_test_fonts");
                 if ui.data(|d| d.get_temp::<bool>(id)).is_none() {
                     crate::theme::install_fonts(ui.ctx(), "");
                     ui.data_mut(|d| d.insert_temp(id, true));
@@ -653,7 +653,7 @@ mod tests {
         let mut h = Harness::builder().with_size(vec2(460.0, 300.0)).build_ui_state(
             |ui, app: &mut DesignApp| {
                 // The panel's fonts are installed before its first frame (the icons draw with them).
-                let id = egui::Id::new("styles_test_fonts");
+                let id = egui::Id::unique("styles_test_fonts");
                 if ui.data(|d| d.get_temp::<bool>(id)).is_none() {
                     crate::theme::install_fonts(ui.ctx(), "");
                     ui.data_mut(|d| d.insert_temp(id, true));
@@ -700,7 +700,7 @@ mod tests {
         let mut h = Harness::builder().with_size(vec2(360.0, 240.0)).build_ui_state(
             |ui, app: &mut DesignApp| {
                 // The panel's fonts are installed before its first frame (the icons draw with them).
-                let id = egui::Id::new("styles_test_fonts");
+                let id = egui::Id::unique("styles_test_fonts");
                 if ui.data(|d| d.get_temp::<bool>(id)).is_none() {
                     crate::theme::install_fonts(ui.ctx(), "");
                     ui.data_mut(|d| d.insert_temp(id, true));
@@ -726,7 +726,7 @@ mod tests {
         let undo_len = app.session.doc().unwrap().history.undo.len();
         let mut h = Harness::builder().with_size(vec2(360.0, 240.0)).build_ui_state(
             |ui, app: &mut DesignApp| {
-                let id = egui::Id::new("test_fonts");
+                let id = egui::Id::unique("test_fonts");
                 if ui.data(|d| d.get_temp::<bool>(id)).is_none() {
                     crate::theme::install_fonts(ui.ctx(), "");
                     ui.data_mut(|d| d.insert_temp(id, true));
