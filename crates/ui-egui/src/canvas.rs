@@ -208,6 +208,17 @@ fn present_click(app: &mut DesignApp, ui: &egui::Ui, resp: &egui::Response, rect
     }
 }
 
+/// View ▸ Show Link Badges: each placed graphic's link status in its corner.
+fn draw_link_badges(app: &mut DesignApp, ctx: &egui::Context, painter: &egui::Painter, doc: &Document, layout: &CanvasLayout, xf: &Xf) {
+    if !app.ui.link_badge {
+        return;
+    }
+    let status = link_statuses(app, ctx, doc);
+    for (c, badge, col) in link_badges(doc, layout, xf, &status) {
+        draw_link_badge(painter, c, badge, col);
+    }
+}
+
 /// Lay out the canvas, scrollbars and rulers, presentation mode, fit/view state, input handling and painting.
 pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
@@ -311,12 +322,7 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
             painter.circle_stroke(c, 8.0, Stroke::new(1.5, Color32::from_white_alpha(170)));
             painter.circle_stroke(c, 4.0, Stroke::new(1.5, Color32::from_white_alpha(170)));
         }
-        if app.ui.link_badge {
-            let status = link_statuses(app, ui.ctx(), &doc);
-            for (c, badge, col) in link_badges(&doc, &layout, &xf, &status) {
-                draw_link_badge(&painter, c, badge, col);
-            }
-        }
+        draw_link_badges(app, ui.ctx(), &painter, &doc, &layout, &xf);
     }
     draw_tool_overlays(app, &painter, &xf);
     ime_canvas_pass(app, ui.ctx(), &xf);
