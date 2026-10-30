@@ -289,8 +289,9 @@ fn relinking_a_missing_link_finds_the_others_in_its_folder() {
     std::fs::create_dir_all(&old).unwrap();
     let png = designcraft_render::Rendered { width: 8, height: 8, pixels: vec![120; 8 * 8 * 4] }.to_png();
     let picked = new.join("a.png").to_string_lossy().to_string();
-    let services = crate::Services { pick_open: Some(Box::new(move |_| Some(picked.clone()))), ..Default::default() };
-    let mut app = DesignApp::new(designcraft_engine::Session::new(), services);
+    let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+    // Relink's file dialog answers with `picked`.
+    app.answer_dialogs(crate::app::file_dialogs::testing::answer_with(Some(picked)));
     app.run("file.new", json!({})).unwrap();
     for (k, name) in ["a.png", "b.png", "c.png"].iter().enumerate() {
         std::fs::write(old.join(name), &png).unwrap();
@@ -306,6 +307,8 @@ fn relinking_a_missing_link_finds_the_others_in_its_folder() {
     h.run_steps(3);
     h.get_by_label("Relink…").click();
     h.run_steps(3);
+    h.state_mut().settle_dialogs();
+    h.run_steps(2);
     let st = h.state().session.active().unwrap();
     for a in st.doc.assets.values() {
         let link = a.link.clone().unwrap_or_default();
@@ -326,8 +329,9 @@ fn a_missing_text_link_alone_starts_no_folder_search() {
     let text = dir.path().join("notes.txt");
     std::fs::write(&text, "Notes").unwrap();
     let picked = found.to_string_lossy().to_string();
-    let services = crate::Services { pick_open: Some(Box::new(move |_| Some(picked.clone()))), ..Default::default() };
-    let mut app = DesignApp::new(designcraft_engine::Session::new(), services);
+    let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+    // Relink's file dialog answers with `picked`.
+    app.answer_dialogs(crate::app::file_dialogs::testing::answer_with(Some(picked)));
     app.run("file.new", json!({})).unwrap();
     let f = app.run("frame.create", json!({"rect": [72, 72, 172, 172]})).unwrap()["id"].as_u64().unwrap();
     app.run("file.place", json!({"path": gone.to_string_lossy(), "frame": f})).unwrap();
@@ -340,6 +344,8 @@ fn a_missing_text_link_alone_starts_no_folder_search() {
     h.run_steps(3);
     h.get_by_label("Relink…").click();
     h.run_steps(3);
+    h.state_mut().settle_dialogs();
+    h.run_steps(2);
     assert!(h.state().ui.dialog.is_none(), "no 'relinked 0' alert");
 }
 
