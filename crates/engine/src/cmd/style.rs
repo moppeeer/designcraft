@@ -15,7 +15,8 @@ mod swatches;
 use color::{apply_color, apply_gradient, has_text_or_selection, sample_color};
 use object::{apply_object, clear_object_overrides, create_object, edit_object};
 use paragraph::{
-    apply_char, apply_para, create_char, create_group, create_para, delete_char, delete_para, edit_char, edit_para, export_tag_key, group_styles, redefine, rename_group,
+    apply_char, apply_para, create_char, create_group, create_para, delete_char, delete_para, edit_char, edit_para, export_tag_key, group_styles,
+    redefine, rename_group,
 };
 pub(crate) use paragraph::{check_grep_styles, grep_style_warnings};
 pub use swatches::parse_color;
