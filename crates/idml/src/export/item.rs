@@ -1,7 +1,6 @@
 use super::common::{affine_s, bool_s, p, pct, uid, with_props};
 use super::{
-    Affine, ColumnsKind, Content, El, Ex, Item, Node, OBJECT_BUILTINS, PathData, Shape, TextFrameOptions, base64_encode, escape_id, names,
-    num, pt,
+    Affine, ColumnsKind, Content, El, Ex, Item, Node, OBJECT_BUILTINS, PathData, Shape, TextFrameOptions, base64_encode, escape_id, names, num, pt,
 };
 
 impl<'a> Ex<'a> {
