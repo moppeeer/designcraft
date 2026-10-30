@@ -159,6 +159,37 @@ pub(super) fn create_object(s: &mut Session, p: &Value) -> Result<Value> {
     })
 }
 
+/// `paragraphStyle`: a paragraph style's name, or null (the object style sets none).
+fn paragraph_style_param(cmd: &str, s: &Session, p: &Value) -> Result<Option<Option<String>>> {
+    match p.get("paragraphStyle") {
+        None => Ok(None),
+        Some(Value::Null) => Ok(Some(None)),
+        Some(Value::String(n)) if s.doc()?.doc.styles.para(n).is_some() => Ok(Some(Some(n.clone()))),
+        Some(Value::String(n)) => Err(bad(cmd, format!("no paragraph style `{n}`"))),
+        Some(_) => Err(bad(cmd, "`paragraphStyle` must be a paragraph style's name or null")),
+    }
+}
+
+/// `textFrame` (a text frame's options, as `document.inspect` shows them) merged over `base`, or
+/// null; refused when the columns aren't 1–40 or a gutter, width or inset isn't 0–15552 pt.
+fn text_frame_param(
+    cmd: &str,
+    p: &Value,
+    base: Option<&designcraft_doc::TextFrameOptions>,
+) -> Result<Option<Option<designcraft_doc::TextFrameOptions>>> {
+    let tf = group_param(cmd, p, "textFrame", base.unwrap_or(&designcraft_doc::TextFrameOptions::default()))?;
+    if let Some(Some(o)) = &tf {
+        if !(1..=40).contains(&o.columns) {
+            return Err(bad(cmd, "text frame columns must be 1–40"));
+        }
+        let mut lengths = [o.gutter, o.column_width, o.vj_paragraph_spacing_limit, o.first_baseline_min].into_iter().chain(o.inset);
+        if !lengths.all(|v| v.is_finite() && (0.0..=15552.0).contains(&v)) {
+            return Err(bad(cmd, "a text frame's gutter, widths and insets must be 0–15552 pt"));
+        }
+    }
+    Ok(tf)
+}
+
 /// A true/false parameter, when given.
 fn bool_param(cmd: &str, p: &Value, key: &str) -> Result<Option<bool>> {
     match p.get(key) {
