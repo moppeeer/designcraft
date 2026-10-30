@@ -881,7 +881,7 @@ fn placed_panels_leave_their_icon_groups() {
     let column = icon_column(None, &mut placed).unwrap();
     let groups: Vec<Vec<&str>> = column.groups.iter().map(|g| g.panels.iter().map(String::as_str).collect()).collect();
     assert_eq!(groups.first().unwrap(), &["stroke", "color", "gradient"]);
-    assert_eq!(groups.get(1).unwrap(), &["characterStyles", "paragraphStyles", "objectStyles"]);
+    assert_eq!(groups.get(1).unwrap(), &["characterStyles", "paragraphStyles"]);
     assert_eq!(groups.len(), ICON_GROUPS.len() - 1);
 }
 
