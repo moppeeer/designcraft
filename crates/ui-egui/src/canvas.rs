@@ -419,7 +419,7 @@ fn loaded_count_label(loaded: Option<usize>) -> Option<String> {
 /// The loaded graphic's thumbnail texture, cached per image data.
 fn loaded_thumb_texture(ctx: &egui::Context, doc: &Document, asset: designcraft_doc::AssetId, size: (f64, f64)) -> Option<egui::TextureHandle> {
     let a = doc.assets.get(&asset)?;
-    let key = egui::Id::new(("loaded_thumb", std::sync::Arc::as_ptr(&a.data) as usize, a.data.len(), a.page));
+    let key = egui::Id::unique(("loaded_thumb", std::sync::Arc::as_ptr(&a.data) as usize, a.data.len(), a.page));
     if let Some(t) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(key)) {
         return Some(t);
     }
