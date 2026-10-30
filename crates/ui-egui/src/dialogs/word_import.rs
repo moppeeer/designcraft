@@ -90,13 +90,16 @@ fn group(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
 fn choice(ui: &mut egui::Ui, d: &mut Dialog, key: &str, options: &[(&str, &str)], tr: &dyn Fn(&str) -> String) {
     let cur = d.s(key);
     let shown = options.iter().find(|o| o.0 == cur).map_or(options[0].1, |o| o.1);
-    craft_ui::ComboBox::from_id_salt(("word_import", key.to_string())).selected_text(crate::rtl::widget(ui, tr(shown))).width(230.0).show_ui(ui, |ui| {
-        for (v, l) in options {
-            if ui.selectable_label(cur == *v, crate::rtl::widget(ui, tr(l))).clicked() {
-                d.fields.insert(key.into(), json!(v));
+    craft_ui::ComboBox::from_id_salt(("word_import", key.to_string())).selected_text(crate::rtl::widget(ui, tr(shown))).width(230.0).show_ui(
+        ui,
+        |ui| {
+            for (v, l) in options {
+                if ui.selectable_label(cur == *v, crate::rtl::widget(ui, tr(l))).clicked() {
+                    d.fields.insert(key.into(), json!(v));
+                }
             }
-        }
-    });
+        },
+    );
 }
 
 pub fn show(app: &DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
