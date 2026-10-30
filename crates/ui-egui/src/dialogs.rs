@@ -5457,27 +5457,33 @@ fn add_bullets(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, lu: &ListUi<'_>) {
             }
             egui::Grid::new("add_bullets_fields").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
                 let name = crate::rtl::label(ui, crate::i18n::tr(lang, "Font Family:"));
-                craft_ui::ComboBox::from_id_salt("addbulletfont").selected_text(family.as_str()).width(220.0).show_ui(ui, |ui| {
-                    for f in lu.families {
-                        if ui.selectable_label(*f == family, f).clicked() {
-                            d.fields.insert("addBulletFont".into(), json!(f));
-                            d.fields.insert("addBulletStyle".into(), json!(lu.fonts.styles(f).into_iter().next().unwrap_or_default()));
+                craft_ui::ComboBox::from_id_salt("addbulletfont")
+                    .selected_text(family.as_str())
+                    .width(220.0)
+                    .show_ui(ui, |ui| {
+                        for f in lu.families {
+                            if ui.selectable_label(*f == family, f).clicked() {
+                                d.fields.insert("addBulletFont".into(), json!(f));
+                                d.fields.insert("addBulletStyle".into(), json!(lu.fonts.styles(f).into_iter().next().unwrap_or_default()));
+                            }
                         }
-                    }
-                })
-                .response
-                .labelled_by(name.id);
+                    })
+                    .response
+                    .labelled_by(name.id);
                 ui.end_row();
                 let name = crate::rtl::label(ui, crate::i18n::tr(lang, "Font Style:"));
-                craft_ui::ComboBox::from_id_salt("addbulletstyle").selected_text(style.as_str()).width(220.0).show_ui(ui, |ui| {
-                    for st in lu.fonts.styles(&family) {
-                        if ui.selectable_label(st == style, &st).clicked() {
-                            d.fields.insert("addBulletStyle".into(), json!(st));
+                craft_ui::ComboBox::from_id_salt("addbulletstyle")
+                    .selected_text(style.as_str())
+                    .width(220.0)
+                    .show_ui(ui, |ui| {
+                        for st in lu.fonts.styles(&family) {
+                            if ui.selectable_label(st == style, &st).clicked() {
+                                d.fields.insert("addBulletStyle".into(), json!(st));
+                            }
                         }
-                    }
-                })
-                .response
-                .labelled_by(name.id);
+                    })
+                    .response
+                    .labelled_by(name.id);
                 ui.end_row();
             });
             let mut remember = d.fields.get("addBulletRemember").and_then(Value::as_bool).unwrap_or(true);
