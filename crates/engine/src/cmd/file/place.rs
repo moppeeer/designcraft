@@ -456,6 +456,7 @@ fn insert_grid_image(
         item.effects = effects.clone();
     }
     item.content = Content::Graphic(Graphic {
+        layer_options: None,
         asset,
         size: (nw, nh),
         xf,
