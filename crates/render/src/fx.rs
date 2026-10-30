@@ -446,7 +446,10 @@ fn offscreen(reach: Rect, spread: f64, width: u16, height: u16) -> Option<Offscr
 
 #[cfg(test)]
 mod tests {
+    use designcraft_compose::Cache;
+
     use super::*;
+    use crate::RenderOptions;
 
     /// A hidden style on a closed frame aligned inside still has its gap colour under it.
     #[test]
