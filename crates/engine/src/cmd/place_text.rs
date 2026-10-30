@@ -239,7 +239,8 @@ fn fill(story: &mut Story, from: &Story) {
 
 /// The link a story placed from `path` keeps (Create Links When Placing Text Files).
 /// `before`: the file's size and time before `bytes` were read (its time is kept only when the
-/// size matches what was read and it can be trusted, see [`super::links::settled`]).
+/// size matches what was read and it can be trusted, see [`super::links::settled`]). The caller
+/// sets the import options it was placed with.
 fn text_link(
     path: &str,
     bytes: &[u8],
@@ -247,7 +248,6 @@ fn text_link(
     map: std::collections::HashMap<String, String>,
     conflict: Conflict,
     remove: bool,
-    options: &designcraft_doc::TextImportOptions,
     story: &Story,
 ) -> TextFileLink {
     TextFileLink {
@@ -258,7 +258,7 @@ fn text_link(
         style_map: map.into_iter().collect(),
         style_conflicts: conflict.name().into(),
         remove_styles: remove,
-        options: options.clone(),
+        options: designcraft_doc::TextImportOptions::default(),
         story_hash: super::links::story_hash(story),
     }
 }
@@ -289,7 +289,8 @@ pub(crate) fn reimport(
         lists_to_text(d, sid, None);
     }
     let story = d.story_mut(sid).ok_or(designcraft_doc::DocError::NoStory(sid))?;
-    story.file_link = Some(text_link(path, bytes, before, map, conflict, link.remove_styles, &link.options, story));
+    story.file_link =
+        Some(TextFileLink { options: link.options.clone(), ..text_link(path, bytes, before, map, conflict, link.remove_styles, story) });
     Ok(imp.warnings)
 }
 
@@ -549,7 +550,9 @@ pub(super) fn place_text(
             };
             let story = d.story_mut(sid).ok_or(designcraft_doc::DocError::NoStory(sid))?;
             fill(story, &imp.story);
-            story.file_link = link.as_deref().map(|path| text_link(path, bytes, before, map.clone(), conflict, remove, &opts, story));
+            story.file_link = link
+                .as_deref()
+                .map(|path| TextFileLink { options: opts.clone(), ..text_link(path, bytes, before, map.clone(), conflict, remove, story) });
             *sel = designcraft_doc::Selection::items(vec![fid]);
             sid
         };
