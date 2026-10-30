@@ -4,7 +4,7 @@ use egui_kittest::{
 };
 
 use super::*;
-use super::links::middle_ellipsis;
+use super::links::{file_size, link_format, middle_ellipsis};
 
 /// A link to a panel whose flyout is open leaves the flyout open.
 #[test]
