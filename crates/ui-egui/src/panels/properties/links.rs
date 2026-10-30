@@ -37,6 +37,27 @@ fn linked_stories(app: &mut DesignApp, ui: &mut egui::Ui) {
     }
 }
 
+/// A Links row's status: nothing when the link is up to date, as in InDesign; otherwise its icon,
+/// named, with why a refused file was refused (or the status) on hover.
+fn link_status_cell(ui: &mut egui::Ui, r: &Value, status_r: Rect, id: u64, lang: &str, t: &Tokens) {
+    let status = r["status"].as_str().unwrap_or("");
+    let status_label = match status {
+        "missing" => "Missing",
+        "modified" => "Modified",
+        "embedded" => "Embedded",
+        "tooLarge" => "Too large to check",
+        _ => return,
+    };
+    let sr = ui.interact(status_r, ui.scope_id().with(("link_status", id)), Sense::hover());
+    sr.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, crate::i18n::tr(lang, status_label)));
+    paint_link_status(ui.painter(), status_r, status, t);
+    let why = r["refused"].as_str().map(str::to_owned);
+    let tip = crate::i18n::tr(lang, status_label).to_string();
+    sr.on_hover_ui(|ui| {
+        crate::rtl::label(ui, why.unwrap_or(tip));
+    });
+}
+
 /// Links: status (missing / modified / embedded), page and effective resolution of every placed
 /// graphic and linked text file; Relink, Go To Link, Update Link, Embed Link for the chosen row.
 pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
@@ -124,26 +145,8 @@ pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
         let font = egui::FontId::proportional(12.0);
         let shown = middle_ellipsis(ui.painter(), &label, &font, name_w);
         ui.painter().text(pos2(thumb.right() + 6.0, row.center().y), egui::Align2::LEFT_CENTER, shown, font, t.text);
-        // Status: nothing when the link is up to date, as in InDesign.
-        let status = r["status"].as_str().unwrap_or("");
         let status_r = Rect::from_center_size(pos2(status_x + status_col / 2.0, row.center().y), vec2(14.0, 14.0));
-        let status_label = match status {
-            "missing" => Some("Missing"),
-            "modified" => Some("Modified"),
-            "embedded" => Some("Embedded"),
-            "tooLarge" => Some("Too large to check"),
-            _ => None,
-        };
-        if let Some(sl) = status_label {
-            let sr = ui.interact(status_r, ui.scope_id().with(("link_status", id)), Sense::hover());
-            sr.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, crate::i18n::tr(&lang, sl)));
-            paint_link_status(ui.painter(), status_r, status, &t);
-            let why = r["refused"].as_str().map(str::to_owned);
-            let tip = crate::i18n::tr(&lang, sl).to_string();
-            sr.on_hover_ui(|ui| {
-                crate::rtl::label(ui, why.unwrap_or(tip));
-            });
-        }
+        link_status_cell(ui, r, status_r, id, &lang, &t);
         // The page, underlined: a click goes to the graphic.
         let uses = r["uses"].as_array().cloned().unwrap_or_default();
         if let Some(u) = uses.first() {
