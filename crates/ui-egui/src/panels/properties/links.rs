@@ -335,7 +335,7 @@ pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
 
 /// `text` shortened in the middle to fit `max` points, as InDesign's Links panel shows long
 /// names ("AdobeSt…108372417.jpg"): the start and the extension stay readable.
-fn middle_ellipsis(painter: &egui::Painter, text: &str, font: &egui::FontId, max: f32) -> String {
+pub(super) fn middle_ellipsis(painter: &egui::Painter, text: &str, font: &egui::FontId, max: f32) -> String {
     let width = |s: &str| painter.layout_no_wrap(s.to_string(), font.clone(), egui::Color32::WHITE).size().x;
     if width(text) <= max {
         return text.to_string();
